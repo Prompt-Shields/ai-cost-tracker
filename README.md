@@ -1,0 +1,26 @@
+# AI Cost Tracker
+
+One place to see what your cloud AI actually costs: **billed cost joined with token usage,
+per model and per deployment**. It starts with Azure OpenAI / AI Foundry, because Microsoft
+Cost Management makes this hard to see, and expands to GCP Vertex AI and AWS Bedrock.
+
+> Status: **planning**. No code yet. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+Internal tool first, run as a standalone SaaS web app that we host.
+
+## What it will answer
+
+- Cost and tokens per deployment and model, today (estimated) and historically (billed)
+- Effective cost per 1M input / output tokens, and how it drifts over time
+- Spend by team, app and cost centre (tags and deployment naming; gateway attribution later)
+- PTU utilisation and idle provisioned capacity
+- Budget alerts and overnight spikes, sent to email, Slack or Teams
+
+## Roadmap
+
+0. Foundations: Entra ID login, RBAC, tenant-scoped schema, fake connector
+1. Azure MVP (internal): one-click connect (one Reader role, no setup in Azure), token metrics, cost, per-deployment view
+2. Budgets, alerts, PTU reports, tag / deployment-based allocation
+2b. Open to external users: signup, connection wizard, Google login, SAML
+3. GCP (Vertex AI)
+4. AWS (Bedrock)
