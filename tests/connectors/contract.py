@@ -54,6 +54,16 @@ class ConnectorContract:
         ids = [a.account_id for a in accounts]
         assert len(ids) == len(set(ids)), "account ids must be unique"
 
+    async def test_check_access(self, connector: Connector, account_id: str) -> None:
+        assert await connector.check_access(account_id) is True
+
+    async def test_list_accounts_include_all(self, connector: Connector) -> None:
+        """Discovery's view: every visible account, a superset of the AI accounts ingested."""
+        everything = await connector.list_accounts(include_all=True)
+        assert all(isinstance(a, CloudAccount) for a in everything)
+        ingested = {a.account_id for a in await connector.list_accounts() if a.has_ai_resources}
+        assert ingested <= {a.account_id for a in everything}
+
     async def test_list_deployments(
         self, connector: Connector, account_id: str, deployments: list[Deployment]
     ) -> None:

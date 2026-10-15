@@ -50,12 +50,15 @@ _DEPLOYMENTS = [
 class FakeConnector:
     name = "fake"
 
-    async def list_accounts(self) -> list[CloudAccount]:
+    async def list_accounts(self, include_all: bool = False) -> list[CloudAccount]:
         return [
             CloudAccount(
                 cloud="azure", account_id=_SUB, name="Demo subscription", has_ai_resources=True
             )
         ]
+
+    async def check_access(self, account_id: str) -> bool:
+        return True
 
     async def list_deployments(self, account_id: str) -> list[Deployment]:
         return [
@@ -67,6 +70,7 @@ class FakeConnector:
                 model=model,
                 model_version=version,
                 sku="GlobalStandard",
+                region="eastus",
                 tags={"team": team},
             )
             for name, acct, model, version, *_rest, team in _DEPLOYMENTS

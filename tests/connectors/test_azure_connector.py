@@ -259,3 +259,58 @@ async def test_pull_usage_chunks_long_ranges_to_seven_days():
     assert spans[0] == "2026-09-01T00:00:00Z/2026-09-08T00:00:00Z"
     assert spans[-1] == "2026-09-29T00:00:00Z/2026-10-01T00:00:00Z"
     assert len(spans) == 5
+
+
+# --- discovery and access --------------------------------------------------------------
+
+
+async def test_list_accounts_include_all_ignores_filter_and_keeps_non_ai():
+    conn, rec = connector(graph_pages, subscription_ids=[SUB])
+    accounts = await conn.list_accounts(include_all=True)
+    assert [(a.account_id, a.has_ai_resources) for a in accounts] == [
+        (SUB, True),
+        ("22222222-2222-2222-2222-222222222222", False),
+        ("33333333-3333-3333-3333-333333333333", True),
+    ]
+    assert all("subscriptions" not in b for b in rec.bodies())
+
+
+@pytest.mark.parametrize("status,expected", [(200, True), (403, False), (404, False)])
+async def test_check_access(status: int, expected: bool):
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "GET"
+        assert request.url.path == f"/subscriptions/{SUB}"
+        assert request.url.params["api-version"] == "2022-12-01"
+        body = {"subscriptionId": SUB, "state": "Enabled"} if status == 200 else {"error": {}}
+        return httpx.Response(status, json=body)
+
+    conn, rec = connector(handler)
+    assert await conn.check_access(SUB) is expected
+    assert len(rec.requests) == 1  # 403/404 are answers, not retried
+
+
+async def test_check_access_server_error_raises_after_retries():
+    conn, rec = connector(lambda r: httpx.Response(500, json={"error": {}}))
+    with pytest.raises(httpx.HTTPStatusError):
+        await conn.check_access(SUB)
+    assert len(rec.requests) == 3
+
+
+async def test_list_deployments_region_from_account_location():
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/resources"):
+            assert "location" in json.loads(request.content)["query"]
+            return httpx.Response(200, json=load("graph_accounts.json"))
+        if path == f"{EASTUS}/deployments":
+            page = 2 if "$skipToken" in str(request.url) else 1
+            return httpx.Response(200, json=load(f"deployments_eastus_page{page}.json"))
+        return httpx.Response(200, json=load("deployments_swc.json"))
+
+    conn, _ = connector(handler)
+    regions = {d.name: d.region for d in await conn.list_deployments(SUB)}
+    assert regions == {
+        "search-chat-gpt4o": "eastus",
+        "search-embed": "eastus",
+        "o3-mini": "swedencentral",
+    }

@@ -16,6 +16,7 @@ from ai_cost_tracker.core.models import CloudAccount, CostRecord, Deployment, To
 
 RESOURCE_GRAPH_URL = "/providers/Microsoft.ResourceGraph/resources?api-version=2022-10-01"
 DEPLOYMENTS_API_VERSION = "2024-10-01"
+SUBSCRIPTION_API_VERSION = "2022-12-01"
 GRAPH_PAGE_SIZE = 1000  # Resource Graph's maximum $top; the default is 100.
 
 # Account kinds that host model deployments. Assumption (#2): other Cognitive Services kinds
@@ -40,7 +41,7 @@ resourcecontainers
 _ACCOUNTS_QUERY = f"""
 resources
 | where type == 'microsoft.cognitiveservices/accounts' and kind in~ {AI_ACCOUNT_KINDS}
-| project id, name, kind, tags
+| project id, name, kind, location, tags
 | order by id asc
 """
 
@@ -53,21 +54,36 @@ class AzureConnector:
         self._client = client or ArmClient(TokenProvider())
         self._cost_column = cost_query.DEFAULT_COST_COLUMN
 
-    async def list_accounts(self) -> list[CloudAccount]:
-        """Configured subscriptions if any, else every visible subscription with AI resources."""
+    async def list_accounts(self, include_all: bool = False) -> list[CloudAccount]:
+        """Configured subscriptions if any, else every visible subscription with AI resources.
+
+        ``include_all`` returns every visible subscription, with or without AI resources and
+        ignoring the configured filter, for daily discovery.
+        """
+        if include_all:
+            return [_account(r) for r in await self._graph(_SUBSCRIPTIONS_QUERY)]
         rows = await self._graph(_SUBSCRIPTIONS_QUERY, sorted(self._only) or None)
-        accounts = [
-            CloudAccount(
-                cloud="azure",
-                account_id=r["subscriptionId"],
-                name=r["name"],
-                has_ai_resources=(r.get("aiAccounts") or 0) > 0,
-            )
-            for r in rows
-        ]
+        accounts = [_account(r) for r in rows]
         if self._only:
             return [a for a in accounts if a.account_id.lower() in self._only]
         return [a for a in accounts if a.has_ai_resources]
+
+    async def check_access(self, account_id: str) -> bool:
+        """GET the subscription as the managed identity: 403/404 mean no role (yet).
+
+        Assumption (#2): with no role on a subscription ARM answers 403
+        (AuthorizationFailed) or 404 (SubscriptionNotFound) depending on whether the identity
+        can see the subscription at all; any role on it, including Reader, allows this read.
+        """
+        try:
+            await self._client.get(
+                f"/subscriptions/{account_id}", params={"api-version": SUBSCRIPTION_API_VERSION}
+            )
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code in (403, 404):
+                return False
+            raise
+        return True
 
     async def list_deployments(self, account_id: str) -> list[Deployment]:
         """Deployments of every AI account; account tags merged under deployment tags."""
@@ -142,6 +158,15 @@ class AzureConnector:
             body = {**body, "options": {**options, "$skipToken": token}}
 
 
+def _account(row: dict[str, Any]) -> CloudAccount:
+    return CloudAccount(
+        cloud="azure",
+        account_id=row["subscriptionId"],
+        name=row["name"],
+        has_ai_resources=(row.get("aiAccounts") or 0) > 0,
+    )
+
+
 def _deployment(account_id: str, acct: dict[str, Any], item: dict[str, Any]) -> Deployment:
     props = item.get("properties") or {}
     model = props.get("model") or {}
@@ -155,5 +180,8 @@ def _deployment(account_id: str, acct: dict[str, Any], item: dict[str, Any]) -> 
         model_version=model.get("version"),
         sku=sku.get("name"),
         capacity=sku.get("capacity"),
+        # A deployment lives in its account's region. Assumption (#2): Global/DataZone SKUs,
+        # which route traffic elsewhere, are still priced by the account's region.
+        region=(acct.get("location") or "").lower() or None,
         tags={**(acct.get("tags") or {}), **(item.get("tags") or {})},
     )
