@@ -210,3 +210,38 @@ async def test_ptu_has_no_token_estimate(session, tenant_id):
     row = await _estimate(session, tenant_id)
     assert row.estimated_cost == 0 and not row.price_missing
     assert row.input_tokens == 1_000_000
+
+
+async def test_audio_prices_not_applied_to_text_tokens(session, tenant_id):
+    """Price sync stores audio/image meters as e.g. "audio_input"; estimates use text only."""
+    pages = [
+        {
+            "Items": [
+                {
+                    "meterName": name,
+                    "armRegionName": "eastus2",
+                    "unitPrice": price,
+                    "unitOfMeasure": "1M",
+                    "currencyCode": "USD",
+                    "type": "Consumption",
+                    "effectiveStartDate": "2025-01-01T00:00:00Z",
+                }
+                for name, price in [
+                    ("gpt-4o-realtime-preview-1217-aud-Inp-glbl Tokens", 40),
+                    ("gpt-4o-realtime-preview-1217-txt-Inp-glbl Tokens", 5),
+                ]
+            ],
+            "NextPageLink": None,
+        }
+    ]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=pages[0])
+
+    await sync_prices(session, httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+    directions = {p.ai_direction for p in await session.scalars(select(Price))}
+    assert directions == {"audio_input", "input"}
+
+    await _one_deployment(session, tenant_id, model="gpt-4o-realtime-preview", sku="GlobalStandard")
+    row = await _estimate(session, tenant_id)
+    assert row.input_cost == Decimal("5")  # text price, not the $40 audio price
