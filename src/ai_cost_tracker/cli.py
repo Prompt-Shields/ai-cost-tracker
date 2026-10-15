@@ -81,7 +81,18 @@ def seed_demo(days: int) -> PassResult:
     from ai_cost_tracker.connectors.fake import FakeConnector
 
     migrate()
-    return asyncio.run(_with_db(run_backfill, FakeConnector(), days=days))
+    connector = FakeConnector()
+    # Prices first: the backfill computes estimates and reconciles against them.
+    asyncio.run(_with_db(seed_prices, connector))
+    return asyncio.run(_with_db(run_backfill, connector, days=days))
+
+
+async def seed_prices(session_factory, connector: Connector, settings) -> PassResult:
+    from ai_cost_tracker.pricing.demo import seed_demo_prices
+
+    async with session_factory() as session:
+        await seed_demo_prices(session)
+    return PassResult()
 
 
 def ingest_once() -> PassResult:

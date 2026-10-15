@@ -90,7 +90,7 @@ AWS Bedrock.
 | **Web app** | Next.js + TypeScript. Overview, cost explorer (group by / filter), model & deployment pages, PTU utilisation, budgets & alerts, connection wizard. |
 | **API** | FastAPI. Authn/z, tenant & user management, connection lifecycle, query endpoints over aggregates, alert rules, CSV / API export. |
 | **Scheduler + workers** | arq on Redis. One job type per source × cadence (see §5). Idempotent, partitioned by (connection, day). |
-| **Connectors** | One Python package per cloud implementing a common `Connector` interface: `discover()`, `pull_cost(day)`, `pull_usage(window)`, `pull_prices()`, `health()`. |
+| **Connectors** | One Python package per cloud implementing the `Connector` protocol (`connectors/base.py`): `list_accounts(include_all=False)`, `list_deployments(account)`, `pull_cost(account, start, end)`, `pull_usage(account, deployments, start, end)`, `check_access(account)`. Prices are synced separately (`pricing/`), since they are public and not per account. |
 | **Normaliser** | Maps raw rows to FOCUS cost rows and to the token-usage fact table; parses AI meters into (model, version, direction, deployment type, region). |
 | **Reconciler** | Joins estimated vs billed cost, computes effective unit prices, flags variance. |
 | **Anomaly / alerts** | Daily and intraday rules: budget thresholds, day-over-day spikes, idle PTU, unknown deployments. Delivered to email, Slack, Teams, webhook. |
@@ -113,10 +113,14 @@ AWS Bedrock.
 
 Azure OpenAI billing lines carry meter names such as `gpt-4o-0806 Inp regnl 1M Tokens` or
 `gpt-4o-mini-0718-Outp-glbl`. The normaliser maintains a versioned rules table that maps
-`(MeterCategory, MeterSubCategory, MeterName)` → `{model, version, direction
-(input|cached_input|output|training|hosting|ptu), deployment_type, unit}`. Unknown meters are
-surfaced in an admin queue rather than silently dropped, and new mappings ship as data, not
-code.
+the meter name → `{model, version, direction (input|cached_input|output|training|hosting|
+provisioned|other), deployment_type, modality (text|audio|image)}`. Modality matters because
+realtime audio and text tokens are priced differently; audio/image prices are stored with a
+prefixed direction (`audio_input`) so they are never applied to text token metrics. Rules live
+in `normalise/azure_meter_rules.json` and ship as data, not code. Unknown meters go to an
+admin queue (`unmapped_meter`, `GET /api/v1/admin/unmapped-meters`) rather than being
+dropped; the queue is rebuilt from stored cost lines on each ingest, so re-runs don't change
+it and meters drop out once a rule matches them.
 
 ### 4.3 Connecting Azure: one click, one role
 
@@ -180,6 +184,14 @@ Azure already records:
 3. **Shared deployments** (several apps on one deployment) are split by an allocation rule
    (fixed %, or proportional to a proxy metric) and flagged as approximate in the UI.
 
+**Billing is per resource, not per deployment.** Cost Management returns cost per
+Cognitive Services account and meter. The API attributes a resource's cost to the deployment
+serving that model; when several deployments on one resource serve the *same* model, the
+cost is split by that day's tokens (evenly if none) and is approximate — billing data alone
+can't tell them apart. Cost with no matching deployment stays on the resource as
+"unattributed" and only carries the tags all of the resource's deployments share. A day
+counts as billed per subscription once any cost line for it exists.
+
 Per-user and per-prompt-route attribution needs request-level data and waits for the
 gateway (or APIM). Ingesting gateway events adds rows to `token_usage` with
 `source = gateway`; nothing else changes.
@@ -209,21 +221,23 @@ changes:
 
 ## 5. Ingestion pipeline
 
+Jobs live in `worker/jobs.py` and are scheduled by arq (`worker/settings.py`). Scheduled
+passes only touch subscriptions that are **tracked** and **connected**; each attempt is
+recorded per subscription and source in `sync_state`, which drives the health panel.
+
 | Job | Cadence | Notes |
 |-----|---------|-------|
-| `inventory.sync` | Hourly + on demand | Upsert accounts and deployments; detect new / deleted deployments. |
-| `usage.pull` | Every 5 min | Azure Monitor metrics, 1-min grain, rolled up to 5-min / hourly / daily continuous aggregates. Watermark per (connection, resource). |
-| `prices.sync` | Daily | Retail prices for AI meters; diff stored so historical estimates stay reproducible. |
-| `cost.pull` | Every 4h | Query API for the current and previous invoice period per subscription; rewrite those days (Azure restates recent days). Exports replace this at scale. |
-| `cost.backfill` | On connect | Query API month by month, newest first, up to 12 months; throttling-aware with backoff. |
-| `metrics.backfill` | On connect | Last 30 days of token metrics from Azure Monitor. |
-| `discovery` | Daily | Find newly visible subscriptions with AI resources; auto-add or raise a banner. |
-| `reconcile` | After each `cost.pull` | Replace estimates with billed figures for closed days; record variance. |
-| `alerts.evaluate` | 15 min (usage-based) / daily (cost-based) | Budgets, spikes, idle PTU, unmapped meters. |
+| inventory | Hourly (minute 7) + on worker start | Upsert accounts and deployments (incl. region); soft-delete vanished deployments. One unreadable subscription is skipped, not fatal. |
+| usage | Every 5 min | Azure Monitor token metrics, hourly buckets, from the subscription's watermark minus 1 h overlap (2 h if none); catch-up capped at 7 days, longer gaps need a backfill. Then estimates for yesterday..today. |
+| cost | Every 4 h | Query API for the previous and current calendar month (pay-as-you-go invoice periods are approximated as calendar months, §4.5), then reconcile. Each subscription waits a deterministic delay (hash of its id, up to 15 min) to spread Cost Management load. |
+| backfill | On connect / track | 30 days of usage in 7-day chunks, then 12 months of cost one month at a time, newest first; progress saved after each chunk and resumed if interrupted. Job id `backfill:<cloud>:<account>` so duplicates collapse. |
+| prices | Daily | Retail Prices API for AI meters; a new row only when a price changes, so old estimates stay reproducible. |
+| discovery | Daily | Subscriptions visible to the managed identity with AI resources but not yet known are added untracked and raise a "new subscription" banner. |
+| access check | Every 10 min | "Waiting for access" subscriptions connect themselves when the Reader role appears (then backfill); tracked ones that lose access are flagged `no_access` with an alert. |
+| reconcile | After each cost pass | Estimated vs billed per subscription, model and day; variance over 2% on a billed day raises an alert (resolved when it falls back within 2%). |
 
-All jobs are **idempotent per (connection, source, day)**: a re-run deletes and rewrites
-that partition inside one transaction. Raw files and API responses are written to object
-storage first ("land, then load") so we can re-normalise when mapping rules change.
+Cost and usage writes are **idempotent per (subscription, source, range)**: a re-run deletes
+and rewrites that partition inside one transaction.
 
 ## 6. Data model
 
@@ -315,8 +329,10 @@ business unit, one purpose). The cost tracker adds **what each asset costs**:
 
 - **Runtime**: containers on Azure Container Apps (API, workers, web) — dogfoods Azure and
   makes Entra federated credentials trivial. Azure Database for PostgreSQL Flexible Server
-  (TimescaleDB extension), Azure Cache for Redis, Blob Storage for raw landing, Key Vault.
-- **IaC**: Bicep or Terraform in `infra/`; one environment per stage (dev, staging, prod).
+  (TimescaleDB extension), Azure Cache for Redis, Key Vault, a user-assigned managed identity.
+  Blob Storage for raw landing is not provisioned in v1 (the Query API is re-queryable).
+- **IaC**: Bicep in `infra/`, deployed by `.github/workflows/deploy.yml` with GitHub OIDC (no
+  stored secrets). Setup, first deploy and rollback: [docs/deploy.md](deploy.md).
 - **Local dev**: `docker compose up` with Postgres + Timescale, Redis, and a **fake cloud**
   connector that replays fixture exports and metrics, so nobody needs an Azure tenant to
   work on the UI.
@@ -389,8 +405,10 @@ ai-cost-tracker/
 
 The original open questions are decided (§2a). Remaining, to answer in phase 0:
 
-1. **Query API spike** — on one pay-as-you-go subscription, confirm daily cost grouped by
-   resource × meter × tags and the throttling limits (§4.5).
+1. **Azure spike (#2)** — run `act spike-azure --subscription <id>` once after `az login`;
+   it checks every assumption marked "#2" in the code and writes a sanitised report. See
+   [docs/spikes/README.md](spikes/README.md). Validation against Cost Analysis (#27):
+   `act compare-cost-analysis --csv <export>`.
 2. **Who onboards** — the person clicking "Connect Azure" should be an Owner (or User Access
    Administrator) on the AI subscriptions, ideally on a management group above them, so
    onboarding is one pass.

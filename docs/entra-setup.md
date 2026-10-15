@@ -41,6 +41,14 @@ types* = Users/Groups and **values** exactly `owner`, `admin`, `analyst`, `viewe
 users or groups in **Enterprise applications** → **Users and groups**. They arrive in the
 `roles` claim. `owner` implies every other role.
 
+## 4b. Delegated permission for "Connect Azure"
+
+The Connect Azure page lists your subscriptions and grants the app's managed identity the
+Reader role using *your* Azure permissions. Add **API permissions** → **Add a permission** →
+**Azure Service Management** → *Delegated* → `user_impersonation`, then **Grant admin
+consent**. The web app requests this token only on the Connect Azure page, sends it only in
+the `X-Azure-Management-Token` header, and the API uses it for that request only.
+
 ## 5. Configure the API
 
 | Variable | Value |

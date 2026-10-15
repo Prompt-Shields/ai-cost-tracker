@@ -699,16 +699,22 @@ async def run_backfill(
     days: int,
     now: datetime | None = None,
 ) -> PassResult:
-    """Inventory, then cost and hourly usage for the last ``days`` days (``act seed-demo``)."""
+    """Inventory, hourly usage, estimates, then cost for the last ``days`` days (``act seed-demo``).
+
+    Usage and estimates come first so the reconciliation that follows the cost pass compares
+    billed cost against complete estimates.
+    """
     now = (now or datetime.now(UTC)).astimezone(UTC)
     await _try_inventory(session_factory, connector, settings)
-    result = await run_cost(
-        session_factory, connector, settings, *cost_window(now.date(), days), today=now.date()
-    )
     _, usage_end = usage_window(now)
     usage_start = datetime.combine(now.date() - timedelta(days=days - 1), time.min, UTC)
+    result = await run_usage(session_factory, connector, settings, usage_start, usage_end, now=now)
+    cost_start, cost_end = cost_window(now.date(), days)
+    await run_estimates(
+        session_factory, await _tenant_id(session_factory, settings), cost_start, cost_end
+    )
     result.add(
-        await run_usage(session_factory, connector, settings, usage_start, usage_end, now=now)
+        await run_cost(session_factory, connector, settings, cost_start, cost_end, today=now.date())
     )
     return result
 
@@ -722,8 +728,11 @@ async def run_once(
     """One pass for ``act ingest-once``: inventory, recent cost, recent usage."""
     today = _date(now)
     await _try_inventory(session_factory, connector, settings)
-    result = await run_cost(session_factory, connector, settings, *cost_window(today), today=today)
-    result.add(await run_usage(session_factory, connector, settings, *usage_window(now), now=now))
+    # Usage (and its estimates) before cost, so reconciliation sees today's estimates.
+    result = await run_usage(session_factory, connector, settings, *usage_window(now), now=now)
+    result.add(
+        await run_cost(session_factory, connector, settings, *cost_window(today), today=today)
+    )
     return result
 
 

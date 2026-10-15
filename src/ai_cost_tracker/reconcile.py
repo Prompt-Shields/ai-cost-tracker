@@ -80,7 +80,9 @@ async def reconcile(
                 day_status=day_status(bill is not None, day, today),
             )
         )
-        if variance is None or model == UNMAPPED:
+        # An estimate with no price is incomplete, not wrong: alerting on it would just
+        # repeat the price_missing flag on every day.
+        if variance is None or model == UNMAPPED or key in price_missing:
             continue
         subject = _subject(key)
         alert = alerts.get(subject)

@@ -74,7 +74,8 @@ def azure_settings(monkeypatch):
 def test_seed_demo_migrates_then_ingests_with_fake_connector(calls, azure_settings):
     assert cli.main(["seed-demo", "--days", "3"]) == 0
     assert calls[0] == ("migrate",)
-    fn, connector, kwargs = calls[1]
+    assert calls[1][0] is cli.seed_prices
+    fn, connector, kwargs = calls[2]
     assert fn is run_backfill
     assert isinstance(connector, FakeConnector)
     assert kwargs == {"days": 3}
@@ -112,5 +113,5 @@ def test_seed_demo_end_to_end_on_sqlite(tmp_path, monkeypatch, azure_settings):
     with sqlite3.connect(path) as conn:
         days = conn.execute("select count(distinct charge_period_start) from cost_line").fetchone()
         usage = conn.execute("select count(*) from token_usage").fetchone()
-    assert days == (2,)
+    assert days == (1,)  # yesterday only: like real billing, today isn't billed yet
     assert usage[0] > 0
