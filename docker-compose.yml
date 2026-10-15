@@ -1,0 +1,76 @@
+# Local development stack. Start with: docker compose up -d --build
+# Then load demo data: docker compose exec api act seed-demo
+
+x-app-env: &app-env
+  ACT_DATABASE_URL: postgresql+asyncpg://act:act_local_dev@db:5432/ai_cost_tracker
+  ACT_REDIS_URL: redis://redis:6379/0
+  ACT_AUTH_DISABLED: "true"
+  ACT_ENVIRONMENT: local
+  ACT_CONNECTOR: fake
+
+services:
+  db:
+    image: timescale/timescaledb:2.17.2-pg16
+    environment:
+      POSTGRES_USER: act
+      POSTGRES_PASSWORD: act_local_dev
+      POSTGRES_DB: ai_cost_tracker
+    ports:
+      - "${ACT_DB_PORT:-5432}:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U act -d ai_cost_tracker"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7.4-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build: .
+    image: ai-cost-tracker:local
+    environment: *app-env
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    image: ai-cost-tracker:local
+    command: ["arq", "ai_cost_tracker.worker.settings.WorkerSettings"]
+    environment: *app-env
+    depends_on:
+      api:
+        condition: service_started
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ./web
+      # NEXT_PUBLIC_* values are inlined at build time, so pass them as build args too.
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8000
+        NEXT_PUBLIC_AUTH_DISABLED: "true"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+      NEXT_PUBLIC_AUTH_DISABLED: "true"
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
+volumes:
+  db-data:
