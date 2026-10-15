@@ -1,0 +1,259 @@
+# Deploys ai-cost-tracker to Azure (docs/deploy.md). Pull requests that touch infra only get
+# the `validate` job (Bicep build + lint, no Azure access); merges to main deploy.
+#
+# Order on every deploy: bootstrap infra (no apps) -> build and push images -> run the
+# migration job with the new image -> roll the apps to the new image. Running it twice with
+# the same commit leaves the same state.
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "web/**"
+      - "infra/**"
+      - "Dockerfile*"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/deploy.yml"
+  pull_request:
+    paths:
+      - "infra/**"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Deploy an image tag already in ACR (a previous commit SHA) instead of building. Used for rollback."
+        required: false
+        default: ""
+      skip_migration:
+        description: "Skip the migration job (required when rolling back to code older than the schema)."
+        type: boolean
+        default: false
+      rotate_db_password:
+        description: "Generate a new Postgres admin password and restart the apps."
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bicep build and lint
+        run: |
+          az bicep install
+          az bicep build --file infra/main.bicep --stdout > /dev/null
+          az bicep lint --file infra/main.bicep
+          az bicep build-params --file infra/main.bicepparam --stdout > /dev/null
+
+  deploy:
+    needs: validate
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      id-token: write # GitHub OIDC -> Entra federated credential; no client secret.
+    environment:
+      name: production
+      url: ${{ steps.bootstrap.outputs.web_url }}
+    # Never run two deploys against the same resource group at once, and never cancel one
+    # midway (a half-applied deployment is worse than a queued one).
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    env:
+      RG: ${{ vars.AZURE_RESOURCE_GROUP }}
+      IMAGE_TAG: ${{ inputs.image_tag || github.sha }}
+      # Read by infra/main.bicepparam. None of these are secrets.
+      ACT_NAME_PREFIX: ${{ vars.ACT_NAME_PREFIX }}
+      ACT_ENTRA_TENANT_ID: ${{ vars.ACT_ENTRA_TENANT_ID }}
+      ACT_ENTRA_CLIENT_ID: ${{ vars.ACT_ENTRA_CLIENT_ID }}
+      ACT_ALLOWED_GROUP_IDS: ${{ vars.ACT_ALLOWED_GROUP_IDS || '[]' }}
+      ACT_ROLE_GROUPS: ${{ vars.ACT_ROLE_GROUPS || '{}' }}
+      ACT_AZURE_SUBSCRIPTION_IDS: ${{ vars.ACT_AZURE_SUBSCRIPTION_IDS || '[]' }}
+      ACT_ALLOWED_IP_RANGES: ${{ vars.ACT_ALLOWED_IP_RANGES || '[]' }}
+      ACT_PUBLIC_WEB_URL: ${{ vars.ACT_PUBLIC_WEB_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Azure CLI extensions
+        run: |
+          az extension add --name containerapp --upgrade --only-show-errors
+          az bicep install
+
+      - name: Bootstrap infrastructure (everything but the apps)
+        id: bootstrap
+        env:
+          ACT_DEPLOY_APPS: "false"
+          ACT_DEPLOY_MIGRATION_JOB: "false"
+          ROTATE: ${{ inputs.rotate_db_password || false }}
+        run: |
+          set -euo pipefail
+          pg=$(az postgres flexible-server list -g "$RG" \
+            --query "[?tags.\"act-component\"=='postgres'] | [0].name" -o tsv)
+          # The password is generated here, used by this one deployment and stored in Key
+          # Vault by Bicep. It is never written to a file, output or later step.
+          if [ -z "$pg" ] || [ "$ROTATE" = "true" ]; then
+            ACT_POSTGRES_ADMIN_PASSWORD=$(openssl rand -hex 32)
+            echo "::add-mask::$ACT_POSTGRES_ADMIN_PASSWORD"
+            export ACT_POSTGRES_ADMIN_PASSWORD
+            echo "Setting the Postgres admin password (new server or rotation)."
+          fi
+          az deployment group create -g "$RG" \
+            --name "act-${GITHUB_RUN_ID}-bootstrap" \
+            --parameters infra/main.bicepparam \
+            --query properties.outputs -o json > outputs.json
+          unset ACT_POSTGRES_ADMIN_PASSWORD
+          {
+            echo "acr=$(jq -r .registryName.value outputs.json)"
+            echo "acr_server=$(jq -r .registryLoginServer.value outputs.json)"
+            echo "pg=$(jq -r .postgresServerName.value outputs.json)"
+            echo "api_app=$(jq -r .apiAppName.value outputs.json)"
+            echo "worker_app=$(jq -r .workerAppName.value outputs.json)"
+            echo "web_app=$(jq -r .webAppName.value outputs.json)"
+            echo "job=$(jq -r .migrationJobName.value outputs.json)"
+            echo "api_url=$(jq -r .apiUrl.value outputs.json)"
+            echo "web_url=$(jq -r .webUrl.value outputs.json)"
+            echo "principal_id=$(jq -r .managedIdentityPrincipalId.value outputs.json)"
+          } >> "$GITHUB_OUTPUT"
+          rm outputs.json
+
+      - name: Restart Postgres if TimescaleDB preload is pending
+        env:
+          PG: ${{ steps.bootstrap.outputs.pg }}
+        run: |
+          set -euo pipefail
+          pending=$(az postgres flexible-server parameter show -g "$RG" -s "$PG" \
+            -n shared_preload_libraries --query isConfigPendingRestart -o tsv)
+          if [ "$pending" = "true" ]; then
+            echo "shared_preload_libraries changed; restarting $PG."
+            az postgres flexible-server restart -g "$RG" -n "$PG"
+          fi
+
+      - name: Build and push images
+        if: inputs.image_tag == ''
+        env:
+          ACR: ${{ steps.bootstrap.outputs.acr }}
+          ACR_SERVER: ${{ steps.bootstrap.outputs.acr_server }}
+          API_URL: ${{ steps.bootstrap.outputs.api_url }}
+          API_SCOPE: ${{ vars.ACT_API_SCOPE || format('api://{0}/access_as_user', vars.ACT_ENTRA_CLIENT_ID) }}
+        run: |
+          set -euo pipefail
+          az acr login --name "$ACR"
+          docker build -t "$ACR_SERVER/ai-cost-tracker:$IMAGE_TAG" .
+          # NEXT_PUBLIC_* are inlined at build time, so the web image is per environment.
+          docker build -t "$ACR_SERVER/ai-cost-tracker-web:$IMAGE_TAG" \
+            --build-arg NEXT_PUBLIC_API_URL="$API_URL" \
+            --build-arg NEXT_PUBLIC_AUTH_DISABLED=false \
+            --build-arg NEXT_PUBLIC_ENTRA_CLIENT_ID="$ACT_ENTRA_CLIENT_ID" \
+            --build-arg NEXT_PUBLIC_ENTRA_TENANT_ID="$ACT_ENTRA_TENANT_ID" \
+            --build-arg NEXT_PUBLIC_API_SCOPE="$API_SCOPE" \
+            web
+          docker push "$ACR_SERVER/ai-cost-tracker:$IMAGE_TAG"
+          docker push "$ACR_SERVER/ai-cost-tracker-web:$IMAGE_TAG"
+
+      - name: Check requested images exist
+        if: inputs.image_tag != ''
+        env:
+          ACR: ${{ steps.bootstrap.outputs.acr }}
+        run: |
+          az acr repository show --name "$ACR" --image "ai-cost-tracker:$IMAGE_TAG" -o none
+          az acr repository show --name "$ACR" --image "ai-cost-tracker-web:$IMAGE_TAG" -o none
+
+      - name: Deploy migration job (apps stay on their current image)
+        if: ${{ !inputs.skip_migration }}
+        env:
+          API_APP: ${{ steps.bootstrap.outputs.api_app }}
+        run: |
+          set -euo pipefail
+          current=$(az containerapp show -g "$RG" -n "$API_APP" \
+            --query "properties.template.containers[0].image" -o tsv 2>/dev/null || true)
+          if [ -n "$current" ]; then
+            export ACT_DEPLOY_APPS=true ACT_IMAGE_TAG="${current##*:}"
+          else
+            # First deploy: create the job only; the apps come after the migration.
+            export ACT_DEPLOY_APPS=false ACT_IMAGE_TAG="$IMAGE_TAG"
+          fi
+          export ACT_DEPLOY_MIGRATION_JOB=true ACT_MIGRATION_IMAGE_TAG="$IMAGE_TAG"
+          az deployment group create -g "$RG" \
+            --name "act-${GITHUB_RUN_ID}-migrate" \
+            --parameters infra/main.bicepparam -o none
+
+      - name: Run migrations and wait
+        if: ${{ !inputs.skip_migration }}
+        env:
+          JOB: ${{ steps.bootstrap.outputs.job }}
+        run: |
+          set -euo pipefail
+          execution=$(az containerapp job start -g "$RG" -n "$JOB" --query name -o tsv)
+          echo "Started $execution"
+          for _ in $(seq 1 90); do
+            status=$(az containerapp job execution show -g "$RG" -n "$JOB" \
+              --job-execution-name "$execution" --query properties.status -o tsv)
+            echo "status: $status"
+            case "$status" in
+              Succeeded) exit 0 ;;
+              Failed|Stopped|Degraded)
+                echo "::error::Migration $execution ended with $status. Logs: Log Analytics," \
+                  "ContainerAppConsoleLogs_CL | where ContainerJobName_s == '$JOB'"
+                exit 1 ;;
+            esac
+            sleep 10
+          done
+          echo "::error::Migration $execution did not finish in 15 minutes."
+          exit 1
+
+      - name: Roll apps to the new image
+        env:
+          ACT_DEPLOY_APPS: "true"
+          ACT_DEPLOY_MIGRATION_JOB: "true"
+          ACT_MIGRATION_IMAGE_TAG: ${{ env.IMAGE_TAG }}
+          ACT_IMAGE_TAG: ${{ env.IMAGE_TAG }}
+        run: |
+          az deployment group create -g "$RG" \
+            --name "act-${GITHUB_RUN_ID}-apps" \
+            --parameters infra/main.bicepparam -o none
+
+      - name: Restart apps after password rotation
+        if: ${{ inputs.rotate_db_password }}
+        env:
+          API_APP: ${{ steps.bootstrap.outputs.api_app }}
+          WORKER_APP: ${{ steps.bootstrap.outputs.worker_app }}
+        run: |
+          set -euo pipefail
+          # Key Vault references are resolved when replicas start; restart to pick up the new URL.
+          for app in "$API_APP" "$WORKER_APP"; do
+            rev=$(az containerapp show -g "$RG" -n "$app" --query properties.latestRevisionName -o tsv)
+            az containerapp revision restart -g "$RG" -n "$app" --revision "$rev" -o none
+          done
+
+      - name: Smoke test
+        env:
+          API_URL: ${{ steps.bootstrap.outputs.api_url }}
+          WEB_URL: ${{ steps.bootstrap.outputs.web_url }}
+          PRINCIPAL_ID: ${{ steps.bootstrap.outputs.principal_id }}
+        run: |
+          set -euo pipefail
+          # With an ingress IP allow-list the runner can't reach the API; skip the probe then.
+          if [ "$ACT_ALLOWED_IP_RANGES" = "[]" ]; then
+            curl -fsS --retry 10 --retry-delay 6 --retry-all-errors "$API_URL/healthz"
+          fi
+          {
+            echo "### Deployed \`$IMAGE_TAG\`"
+            echo "- Web: $WEB_URL"
+            echo "- API: $API_URL"
+            echo "- Managed identity principal ID (grant Reader to this): \`$PRINCIPAL_ID\`"
+          } >> "$GITHUB_STEP_SUMMARY"
