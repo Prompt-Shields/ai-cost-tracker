@@ -334,26 +334,27 @@ business unit, one purpose). The cost tracker adds **what each asset costs**:
 - No prompt / completion content is ever ingested; only counts and metadata.
 - SOC 2-friendly audit trail from day one (§7).
 
-## 12. Proposed repository layout
+## 12. Repository layout
+
+One Python package (API and worker share the image and the code) plus a separate Next.js
+app. Simpler than separate packages per component while we are one team and one deployment;
+split later if a component needs its own release cycle.
 
 ```
 ai-cost-tracker/
-├── apps/
-│   ├── api/              FastAPI service
-│   ├── worker/           arq jobs & scheduler
-│   └── web/              Next.js frontend
-├── packages/
-│   ├── core/             domain models, FOCUS schema, money/FX, tenancy
-│   ├── connectors/
-│   │   ├── base/         Connector interface + contract tests
-│   │   ├── azure/
-│   │   ├── gcp/
-│   │   ├── aws/
-│   │   └── fake/         fixture replay for local dev & tests
-│   ├── normalise/        meter parsing rules, FOCUS mapping
-│   └── db/               SQLAlchemy models + Alembic migrations
-├── infra/                Bicep / Terraform
-├── docs/                 architecture, ADRs, runbooks
+├── src/ai_cost_tracker/
+│   ├── core/             cloud-neutral domain models (FOCUS-style cost, token usage)
+│   ├── connectors/       Connector protocol, fake/ (demo data), azure/ (gcp/, aws/ later)
+│   ├── normalise/        meter parsing rules (data file + parser)
+│   ├── db/               SQLAlchemy models, Alembic migrations
+│   ├── ingest.py         idempotent writes from connectors to the DB
+│   ├── worker/           arq jobs and schedule
+│   ├── api/              FastAPI app, Entra auth, routes
+│   └── cli.py            `act migrate | seed-demo | ingest-once`
+├── tests/                pytest, incl. connector contract tests and Azure fixtures
+├── web/                  Next.js frontend
+├── infra/                Bicep / Terraform (M1, #26)
+├── docs/                 architecture, setup guides, spikes
 └── docker-compose.yml
 ```
 

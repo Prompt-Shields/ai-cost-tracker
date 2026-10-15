@@ -1,0 +1,29 @@
+{
+  "name": "ai-cost-tracker-web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@azure/msal-browser": "5.25.1",
+    "@azure/msal-react": "5.7.2",
+    "next": "15.5.28",
+    "react": "19.2.9",
+    "react-dom": "19.2.9",
+    "react-is": "19.2.9",
+    "recharts": "3.10.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.7",
+    "typescript": "5.9.3"
+  },
+  "overrides": {
+    "postcss": "8.5.23"
+  }
+}
