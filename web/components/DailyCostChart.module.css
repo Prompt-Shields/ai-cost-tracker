@@ -3,8 +3,36 @@
   min-width: 0;
 }
 
-.legendText {
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
   color: var(--text-secondary);
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.legendLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 220px;
+}
+
+.legendNote {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
 }
 
 .tooltip {
@@ -15,6 +43,7 @@
   font-size: 13px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
   min-width: 180px;
+  max-width: 300px;
 }
 
 .tooltipTitle {
@@ -48,8 +77,27 @@
   font-weight: 600;
 }
 
+.tooltipNote {
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
 .swatch {
   width: 10px;
   height: 10px;
   border-radius: 2px;
+  flex: none;
+}
+
+/* A lighter fill marks cost that is still an estimate (billing lags 24-72h). */
+.swatchEstimated {
+  opacity: var(--estimated-opacity);
+}
+
+.lineKey {
+  width: 14px;
+  height: 2px;
+  border-radius: 1px;
+  flex: none;
 }

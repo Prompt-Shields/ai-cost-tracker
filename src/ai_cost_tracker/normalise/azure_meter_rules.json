@@ -29,52 +29,239 @@
   "model_aliases": {
     "gpt-3.5-turbo": "gpt-35-turbo",
     "gpt-3.5-turbo-instruct": "gpt-35-turbo-instruct",
-    "ada-embeddings": "text-embedding-ada-002"
+    "ada-embeddings": "text-embedding-ada-002",
+    "gpt-4o-rt": "gpt-4o-realtime-preview",
+    "gpt-4o-mini-rt": "gpt-4o-mini-realtime-preview"
   },
   "direction_rules": [
-    {"all": ["cchd"], "direction": "cached_input"},
-    {"all": ["cached"], "direction": "cached_input"},
-    {"all": ["cache"], "direction": "cached_input"},
-    {"all": ["training"], "direction": "training"},
-    {"all": ["trng"], "direction": "training"},
-    {"all": ["hosting"], "direction": "hosting"},
-    {"all": ["hostg"], "direction": "hosting"},
-    {"all": ["hosted"], "direction": "hosting"},
-    {"all": ["inp"], "direction": "input"},
-    {"all": ["input"], "direction": "input"},
-    {"all": ["outp"], "direction": "output"},
-    {"all": ["output"], "direction": "output"},
-    {"all": ["provisioned"], "direction": "provisioned"},
-    {"all": ["ptu"], "direction": "provisioned"}
+    {
+      "all": [
+        "cchd"
+      ],
+      "direction": "cached_input"
+    },
+    {
+      "all": [
+        "cached"
+      ],
+      "direction": "cached_input"
+    },
+    {
+      "all": [
+        "cache"
+      ],
+      "direction": "cached_input"
+    },
+    {
+      "all": [
+        "training"
+      ],
+      "direction": "training"
+    },
+    {
+      "all": [
+        "trng"
+      ],
+      "direction": "training"
+    },
+    {
+      "all": [
+        "hosting"
+      ],
+      "direction": "hosting"
+    },
+    {
+      "all": [
+        "hostg"
+      ],
+      "direction": "hosting"
+    },
+    {
+      "all": [
+        "hosted"
+      ],
+      "direction": "hosting"
+    },
+    {
+      "all": [
+        "inp"
+      ],
+      "direction": "input"
+    },
+    {
+      "all": [
+        "input"
+      ],
+      "direction": "input"
+    },
+    {
+      "all": [
+        "outp"
+      ],
+      "direction": "output"
+    },
+    {
+      "all": [
+        "output"
+      ],
+      "direction": "output"
+    },
+    {
+      "all": [
+        "provisioned"
+      ],
+      "direction": "provisioned"
+    },
+    {
+      "all": [
+        "ptu"
+      ],
+      "direction": "provisioned"
+    }
   ],
   "deployment_rules": [
-    {"all": ["batch"], "deployment_type": "batch"},
-    {"all": ["provisioned"], "deployment_type": "provisioned"},
-    {"all": ["ptu"], "deployment_type": "provisioned"},
-    {"all": ["dzone"], "deployment_type": "data_zone"},
-    {"all": ["datazone"], "deployment_type": "data_zone"},
-    {"all": ["dz"], "deployment_type": "data_zone"},
-    {"all": ["data", "zone"], "deployment_type": "data_zone"},
-    {"all": ["glbl"], "deployment_type": "global"},
-    {"all": ["global"], "deployment_type": "global"},
-    {"all": ["regnl"], "deployment_type": "regional"},
-    {"all": ["rgnl"], "deployment_type": "regional"},
-    {"all": ["regional"], "deployment_type": "regional"}
+    {
+      "all": [
+        "batch"
+      ],
+      "deployment_type": "batch"
+    },
+    {
+      "all": [
+        "provisioned"
+      ],
+      "deployment_type": "provisioned"
+    },
+    {
+      "all": [
+        "ptu"
+      ],
+      "deployment_type": "provisioned"
+    },
+    {
+      "all": [
+        "dzone"
+      ],
+      "deployment_type": "data_zone"
+    },
+    {
+      "all": [
+        "datazone"
+      ],
+      "deployment_type": "data_zone"
+    },
+    {
+      "all": [
+        "dz"
+      ],
+      "deployment_type": "data_zone"
+    },
+    {
+      "all": [
+        "data",
+        "zone"
+      ],
+      "deployment_type": "data_zone"
+    },
+    {
+      "all": [
+        "glbl"
+      ],
+      "deployment_type": "global"
+    },
+    {
+      "all": [
+        "global"
+      ],
+      "deployment_type": "global"
+    },
+    {
+      "all": [
+        "regnl"
+      ],
+      "deployment_type": "regional"
+    },
+    {
+      "all": [
+        "rgnl"
+      ],
+      "deployment_type": "regional"
+    },
+    {
+      "all": [
+        "regional"
+      ],
+      "deployment_type": "regional"
+    }
   ],
   "_modality_comment": "Never use 'text' here: every rule token also ends the model name, which would break text-embedding-*.",
   "modality_rules": [
-    {"all": ["aud"], "modality": "audio"},
-    {"all": ["audio"], "modality": "audio"},
-    {"all": ["txt"], "modality": "text"},
-    {"all": ["img"], "modality": "image"},
-    {"all": ["image"], "modality": "image"},
-    {"all": ["images"], "modality": "image"}
+    {
+      "all": [
+        "aud"
+      ],
+      "modality": "audio"
+    },
+    {
+      "all": [
+        "audio"
+      ],
+      "modality": "audio"
+    },
+    {
+      "all": [
+        "txt"
+      ],
+      "modality": "text"
+    },
+    {
+      "all": [
+        "img"
+      ],
+      "modality": "image"
+    },
+    {
+      "all": [
+        "image"
+      ],
+      "modality": "image"
+    },
+    {
+      "all": [
+        "images"
+      ],
+      "modality": "image"
+    }
   ],
   "_stop_comment": "Tokens that end the model name, in addition to every token used by a rule above.",
   "stop_tokens": [
-    "tokens", "token", "1k", "1m", "units", "unit", "hours", "hour", "hr",
-    "standard", "hd", "managed", "ftuned", "ft", "fine", "tuned",
-    "characters", "chars", "seconds", "minutes", "speech", "transcription",
-    "model", "models", "zone", "std", "developer", "dev"
+    "tokens",
+    "token",
+    "1k",
+    "1m",
+    "units",
+    "unit",
+    "hours",
+    "hour",
+    "hr",
+    "standard",
+    "hd",
+    "managed",
+    "ftuned",
+    "ft",
+    "fine",
+    "tuned",
+    "characters",
+    "chars",
+    "seconds",
+    "minutes",
+    "speech",
+    "transcription",
+    "model",
+    "models",
+    "zone",
+    "std",
+    "developer",
+    "dev"
   ]
 }

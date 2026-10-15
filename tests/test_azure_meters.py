@@ -113,3 +113,9 @@ async def test_fake_connector_meters_all_parse() -> None:
         assert info.version is not None and len(info.version) == 4
         assert info.direction in {"input", "output"}
         assert info.deployment_type == "global"
+
+
+def test_realtime_meter_short_names_match_deployment_model_names():
+    # Meters abbreviate realtime models ("gpt-4o-rt"); deployments use the full name.
+    assert parse_meter("gpt-4o-rt-1217 aud inp glbl").model == "gpt-4o-realtime-preview"
+    assert parse_meter("gpt-4o-mini-rt Txt Inp glbl").model == "gpt-4o-mini-realtime-preview"
