@@ -14,6 +14,7 @@ from ai_cost_tracker.db.models import (
     DeploymentRow,
     Tenant,
     TokenUsageRow,
+    UnmappedMeter,
 )
 from ai_cost_tracker.ingest import (
     get_or_create_tenant,
@@ -284,3 +285,142 @@ async def test_sync_inventory_skips_unreadable_account(session, tenant_id, monke
     assert found == {}
     row = await session.scalar(select(DeploymentRow))
     assert row.deleted_at is None  # stored inventory untouched, not marked deleted
+
+
+UNKNOWN = "mystery-model-9000 Inp glbl"  # no known family: lands in the queue
+
+
+async def _queue(session):
+    session.expire_all()
+    rows = await session.scalars(select(UnmappedMeter).order_by(UnmappedMeter.sku_meter))
+    return [
+        (r.sku_meter, r.first_seen, r.last_seen, Decimal(r.total_cost), r.currency) for r in rows
+    ]
+
+
+async def test_unmapped_meters_are_queued(session, tenant_id):
+    stub = StubConnector(
+        costs=[_cost(D1, "1.5", UNKNOWN), _cost(D7, "2.25", UNKNOWN), _cost(D1, "9")]
+    )
+    await ingest_cost(session, tenant_id, stub, "sub-1", D1, D7)
+    assert await _queue(session) == [(UNKNOWN, D1, D7, Decimal("3.75"), "USD")]
+    # The line is still stored, just without a model.
+    line = await session.scalar(select(CostLine).where(CostLine.sku_meter == UNKNOWN).limit(1))
+    assert line.ai_model is None
+
+
+async def test_unmapped_queue_idempotent_and_spans_accounts(session, tenant_id):
+    stub = StubConnector(costs=[_cost(D1, "1", UNKNOWN), _cost(D7, "2", UNKNOWN)])
+    await ingest_cost(session, tenant_id, stub, "sub-1", D1, D7)
+    first = await _queue(session)
+    await ingest_cost(session, tenant_id, stub, "sub-1", D1, D7)
+    await ingest_cost(session, tenant_id, stub, "sub-1", D1, D1)  # sub-range re-run
+    assert await _queue(session) == first == [(UNKNOWN, D1, D7, Decimal(3), "USD")]
+
+    # The same meter in another account adds to the total; other tenants never see it.
+    other_acct = _cost(D1 - timedelta(days=1), "4", UNKNOWN).model_copy(
+        update={"sub_account_id": "sub-2"}
+    )
+    stub2 = StubConnector(costs=[other_acct])
+    await ingest_cost(session, tenant_id, stub2, "sub-2", D1 - timedelta(days=5), D1)
+    assert await _queue(session) == [(UNKNOWN, D1 - timedelta(days=1), D7, Decimal(7), "USD")]
+
+    # A correction that removes the lines shrinks, then empties, the queue entry.
+    stub.costs = []
+    await ingest_cost(session, tenant_id, stub, "sub-1", D1, D7)
+    assert await _queue(session) == [
+        (UNKNOWN, D1 - timedelta(days=1), D1 - timedelta(days=1), Decimal(4), "USD")
+    ]
+    stub2.costs = []
+    await ingest_cost(session, tenant_id, stub2, "sub-2", D1 - timedelta(days=5), D1)
+    assert await _queue(session) == []
+
+
+async def test_unmapped_queue_is_tenant_scoped(session, tenant_id):
+    other = await get_or_create_tenant(session, "other")
+    stub = StubConnector(costs=[_cost(D1, "1", UNKNOWN)])
+    await ingest_cost(session, other, stub, "sub-1", D1, D1)
+    await ingest_cost(session, tenant_id, stub, "sub-1", D1, D1)
+    rows = (await session.execute(select(UnmappedMeter.tenant_id, UnmappedMeter.total_cost))).all()
+    assert sorted(t for t, _ in rows) == sorted([other, tenant_id])
+
+
+async def test_unmapped_meter_cleared_once_it_parses(session, tenant_id, monkeypatch):
+    from ai_cost_tracker.normalise import azure_meters
+
+    stub = StubConnector(costs=[_cost(D1, "1", UNKNOWN)])
+    await ingest_cost(session, tenant_id, stub, "sub-1", D1, D1)
+    assert len(await _queue(session)) == 1
+
+    info = azure_meters.MeterInfo("mystery-model-9000", None, "input", "global")
+    monkeypatch.setattr(azure_meters, "parse_meter", lambda meter: info)
+    await ingest_cost(session, tenant_id, stub, "sub-1", D1, D1)
+    assert await _queue(session) == []
+    line = await session.scalar(select(CostLine))
+    assert line.ai_model == "mystery-model-9000"
+
+
+async def test_unmapped_queue_rolls_back_with_cost(session, tenant_id, monkeypatch):
+    stub = StubConnector(costs=[_cost(D1, "1", UNKNOWN)])
+    await ingest_cost(session, tenant_id, stub, "sub-1", D1, D1)
+
+    async def explode(*_args):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(ingest, "_upsert_unmapped", explode)
+    stub.costs = [_cost(D1, "5", UNKNOWN)]
+    with pytest.raises(RuntimeError):
+        await ingest_cost(session, tenant_id, stub, "sub-1", D1, D1)
+    assert await _cost_stats(session) == (1, Decimal(1))
+    assert [r[3] for r in await _queue(session)] == [Decimal(1)]
+
+
+async def test_no_queue_without_meter_parser(session, tenant_id, monkeypatch):
+    monkeypatch.setitem(sys.modules, "ai_cost_tracker.normalise.azure_meters", None)
+    stub = StubConnector(costs=[_cost(D1, "1", UNKNOWN)])
+    await ingest_cost(session, tenant_id, stub, "sub-1", D1, D1)
+    assert await _queue(session) == []
+
+
+async def test_sync_inventory_persists_region(session, tenant_id):
+    stub = StubConnector(deployments=[_dep("a").model_copy(update={"region": "swedencentral"})])
+    await sync_inventory(session, tenant_id, stub)
+    assert (await session.scalar(select(DeploymentRow))).region == "swedencentral"
+
+    stub.deployments = [_dep("a").model_copy(update={"region": "eastus2"})]
+    await sync_inventory(session, tenant_id, stub)
+    session.expire_all()
+    assert (await session.scalar(select(DeploymentRow))).region == "eastus2"
+
+
+async def test_sync_inventory_new_account_keeps_defaults(session, tenant_id):
+    await sync_inventory(session, tenant_id, StubConnector(deployments=[_dep("a")]))
+    account = await session.scalar(select(CloudAccountRow))
+    defaults = CloudAccountRow.__table__.c
+    assert account.tracked is defaults.tracked.default.arg
+    assert account.access_status == defaults.access_status.default.arg
+    assert account.discovered_at is None
+
+
+async def test_sync_inventory_leaves_tracking_alone(session, tenant_id):
+    discovered = datetime(2026, 2, 1, tzinfo=UTC)
+    session.add(
+        CloudAccountRow(
+            tenant_id=tenant_id,
+            cloud="azure",
+            account_id="sub-1",
+            name="Old name",
+            tracked=False,
+            access_status="waiting_for_access",
+            discovered_at=discovered,
+        )
+    )
+    await session.commit()
+
+    await sync_inventory(session, tenant_id, StubConnector(deployments=[_dep("a")]))
+    session.expire_all()
+    account = await session.scalar(select(CloudAccountRow))
+    assert account.name == "Sub one" and account.has_ai_resources
+    assert account.tracked is False
+    assert account.access_status == "waiting_for_access"
+    assert account.discovered_at.replace(tzinfo=UTC) == discovered
