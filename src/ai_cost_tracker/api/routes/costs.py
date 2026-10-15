@@ -1,62 +1,44 @@
-"""Cost and token aggregates over a day range. All grouping happens in SQL."""
+"""Cost and token aggregates over a day range (issue #22).
 
-import uuid
-from datetime import UTC, datetime, time, timedelta
+Billed cost comes from cost lines, estimated cost from token x price estimates; see
+``api.queries`` for how a day is judged billed and how cost reaches deployments and tags.
+"""
+
+from collections import defaultdict
+from collections.abc import Callable
+from datetime import date
 from decimal import Decimal
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends
-from sqlalchemy import Date, cast, func, select
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.sql.elements import ColumnElement
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy import func, select
 
+from ai_cost_tracker.api import queries as q
 from ai_cost_tracker.api.auth import get_principal
-from ai_cost_tracker.api.deps import DateRange, Range, SessionDep, TenantId, money
-from ai_cost_tracker.db.models import CostLine, TokenUsageRow
+from ai_cost_tracker.api.deps import CostFilters, Range, SessionDep, TenantId, Today, money
+from ai_cost_tracker.db.models import TokenUsageRow
 
 router = APIRouter(tags=["costs"], dependencies=[Depends(get_principal)])
 
-UNMAPPED = "unmapped"
-DEFAULT_CURRENCY = "USD"
-_PER_1M_PLACES = Decimal("0.0001")
+GroupBy = Annotated[
+    str,
+    Query(
+        description="model | deployment (<resource>/<deployment>) | account | tag:<key> "
+        '(rows without the tag go to "untagged")',
+        pattern=r"^(model|deployment|account|tag:.+)$",
+    ),
+]
 
 
-def _usage_day(session: AsyncSession) -> ColumnElement:
-    """UTC calendar day of ``token_usage.bucket_start``.
-
-    ``CAST(x AS DATE)`` is wrong on SQLite (DATE has NUMERIC affinity, so it yields the year)
-    and on Postgres it follows the session time zone, so pin UTC there explicitly.
-    """
-    col = TokenUsageRow.bucket_start
-    if session.get_bind().dialect.name == "postgresql":
-        return cast(func.timezone("UTC", col), Date)
-    return func.date(col)
-
-
-def _usage_window(rng: DateRange) -> tuple[datetime, datetime]:
-    """[start 00:00 UTC, end+1 00:00 UTC): a range on the raw column keeps the index usable."""
-    lo = datetime.combine(rng.start, time.min, tzinfo=UTC)
-    return lo, datetime.combine(rng.end + timedelta(days=1), time.min, tzinfo=UTC)
-
-
-def _day(value: Any) -> str:
-    # Postgres returns a date, SQLite func.date() a 'YYYY-MM-DD' string.
-    return value.isoformat() if hasattr(value, "isoformat") else str(value)
-
-
-async def _currency(session: AsyncSession, tenant_id: uuid.UUID, rng: DateRange) -> str:
-    """The billing currency in range. v1 subscriptions all bill in one currency."""
-    currencies = (
-        await session.scalars(
-            select(CostLine.billing_currency)
-            .where(
-                CostLine.tenant_id == tenant_id,
-                CostLine.charge_period_start.between(rng.start, rng.end),
-            )
-            .distinct()
-        )
-    ).all()
-    return currencies[0] if len(currencies) == 1 else DEFAULT_CURRENCY
+def _grouper(group_by: str, inventory: q.Inventory) -> Callable[[q.CellKey], str]:
+    if group_by == "model":
+        return lambda k: k.model
+    if group_by == "account":
+        return lambda k: k.account_id
+    if group_by == "deployment":
+        return lambda k: q.deployment_label(k.resource_id, k.deployment)
+    tag_key = group_by.removeprefix("tag:")
+    return lambda k: str(inventory.tags(k.resource_id, k.deployment).get(tag_key) or q.UNTAGGED)
 
 
 @router.get("/costs/daily")
@@ -64,23 +46,37 @@ async def costs_daily(
     rng: Range,
     session: SessionDep,
     tenant_id: TenantId,
+    filters: CostFilters,
+    group_by: GroupBy = "model",
 ) -> dict[str, Any]:
-    model = func.coalesce(CostLine.ai_model, UNMAPPED)
-    result = await session.execute(
-        select(CostLine.charge_period_start, model, func.sum(CostLine.billed_cost))
-        .where(
-            CostLine.tenant_id == tenant_id,
-            CostLine.charge_period_start.between(rng.start, rng.end),
+    """Billed and estimated cost per day and group. Show ``estimated_cost`` for rows whose
+    ``day_status`` is "estimated" (billing not in yet for every account in the row)."""
+    inventory = await q.load_inventory(session, tenant_id)
+    data = await q.load(session, tenant_id, rng.start, rng.end, filters, inventory)
+    key_of = _grouper(group_by, inventory)
+    rows: dict[tuple[date, str], dict[str, Any]] = {}
+    for key, cell in data.cells.items():
+        if not cell.has_cost:
+            continue
+        row = rows.setdefault(
+            (key.day, key_of(key)),
+            {"billed": Decimal(0), "estimated": Decimal(0), "statuses": set()},
         )
-        .group_by(CostLine.charge_period_start, model)
-        .order_by(CostLine.charge_period_start, model)
-    )
-    return {
-        "currency": await _currency(session, tenant_id, rng),
-        "rows": [
-            {"day": _day(day), "model": m, "billed_cost": money(cost)} for day, m, cost in result
-        ],
-    }
+        row["billed"] += cell.billed
+        row["estimated"] += cell.estimated
+        row["statuses"].add(data.day_status(key.day, key.account_id))
+    out = []
+    for (day, key), row in sorted(rows.items()):
+        item: dict[str, Any] = {"day": day.isoformat(), "key": key}
+        if group_by == "model":
+            item["model"] = key  # M0 field, kept for existing clients
+        item |= {
+            "billed_cost": money(row["billed"]),
+            "estimated_cost": money(row["estimated"]),
+            "day_status": q.min_status(row["statuses"]),
+        }
+        out.append(item)
+    return {"currency": await q.currency(session, tenant_id, rng.start, rng.end), "rows": out}
 
 
 @router.get("/usage/daily")
@@ -89,8 +85,8 @@ async def usage_daily(
     session: SessionDep,
     tenant_id: TenantId,
 ) -> dict[str, Any]:
-    day = _usage_day(session)
-    lo, hi = _usage_window(rng)
+    day = q.usage_day(session)
+    lo, hi = q.usage_window(rng.start, rng.end)
     result = await session.execute(
         select(
             day,
@@ -111,7 +107,7 @@ async def usage_daily(
     return {
         "rows": [
             {
-                "day": _day(d),
+                "day": q.as_date(d).isoformat(),
                 "deployment": dep,
                 "model": m,
                 "input_tokens": int(inp or 0),
@@ -123,69 +119,62 @@ async def usage_daily(
     }
 
 
+def _total(data: q.Dataset) -> Decimal:
+    return sum((data.effective(k, c)[0] for k, c in data.cells.items()), Decimal(0))
+
+
 @router.get("/summary")
 async def summary(
     rng: Range,
     session: SessionDep,
     tenant_id: TenantId,
+    filters: CostFilters,
+    today: Today,
 ) -> dict[str, Any]:
-    cost_model = func.coalesce(CostLine.ai_model, UNMAPPED).label("model")
-    cost = (
-        select(cost_model, func.sum(CostLine.billed_cost).label("billed_cost"))
-        .where(
-            CostLine.tenant_id == tenant_id,
-            CostLine.charge_period_start.between(rng.start, rng.end),
-        )
-        .group_by(cost_model)
-        .subquery()
-    )
-    lo, hi = _usage_window(rng)
-    usage_model = func.coalesce(TokenUsageRow.model, UNMAPPED).label("model")
-    usage = (
-        select(
-            usage_model,
-            func.sum(TokenUsageRow.input_tokens).label("input_tokens"),
-            func.sum(TokenUsageRow.output_tokens).label("output_tokens"),
-        )
-        .where(
-            TokenUsageRow.tenant_id == tenant_id,
-            TokenUsageRow.bucket_start >= lo,
-            TokenUsageRow.bucket_start < hi,
-        )
-        .group_by(usage_model)
-        .subquery()
-    )
-    # Cost-driven: a model with tokens but no billed cost yet (billing lags ~1 day) is
-    # left out rather than shown as free.
-    result = await session.execute(
-        select(cost.c.model, cost.c.billed_cost, usage.c.input_tokens, usage.c.output_tokens)
-        .select_from(cost.outerjoin(usage, usage.c.model == cost.c.model))
-        .order_by(cost.c.billed_cost.desc(), cost.c.model)
-    )
+    """Totals for the range, plus today's estimate and month to date (both relative to today,
+    not the range). Costs are billed where billing is in and estimated elsewhere."""
+    inventory = await q.load_inventory(session, tenant_id)
+    data = await q.load(session, tenant_id, rng.start, rng.end, filters, inventory)
+    today_data = await q.load(session, tenant_id, today, today, filters, inventory)
+    mtd = await q.load(session, tenant_id, today.replace(day=1), today, filters, inventory)
 
+    models: dict[str, dict[str, Any]] = defaultdict(
+        lambda: {"has_cost": False, "num": [Decimal(0)] * 5, "tok": [0, 0]}
+    )
+    for key, cell in data.cells.items():
+        m = models[key.model]
+        m["has_cost"] |= cell.has_cost
+        eff, eff_in, eff_out = data.effective(key, cell)
+        for i, v in enumerate((cell.billed, cell.estimated, eff, eff_in, eff_out)):
+            m["num"][i] += v
+        m["tok"][0] += cell.input_tokens
+        m["tok"][1] += cell.output_tokens
+
+    # Models with tokens but no cost line and no estimate are left out rather than shown free.
+    ranked = sorted(
+        ((name, m) for name, m in models.items() if m["has_cost"]),
+        key=lambda item: (-item[1]["num"][2], item[0]),
+    )
     by_model = []
-    total = Decimal(0)
-    for model, billed, inp, out in result:
-        billed_dec = Decimal(money(billed))
-        total += billed_dec
-        inp, out = int(inp or 0), int(out or 0)
-        tokens = inp + out
-        per_1m = (
-            format((billed_dec / tokens * 1_000_000).quantize(_PER_1M_PLACES), "f")
-            if tokens
-            else None
-        )
+    for name, m in ranked:
+        billed, estimated, eff, eff_in, eff_out = m["num"]
+        inp, out = m["tok"]
         by_model.append(
             {
-                "model": model,
-                "billed_cost": money(billed_dec),
+                "model": name,
+                "billed_cost": money(billed),
+                "estimated_cost": money(estimated),
                 "input_tokens": inp,
                 "output_tokens": out,
-                "cost_per_1m_tokens": per_1m,
+                "cost_per_1m_tokens": q.per_1m(eff, inp + out),
+                "cost_per_1m_input": q.per_1m(eff_in, inp),
+                "cost_per_1m_output": q.per_1m(eff_out, out),
             }
         )
     return {
-        "currency": await _currency(session, tenant_id, rng),
-        "total_cost": money(total),
+        "currency": await q.currency(session, tenant_id, rng.start, rng.end),
+        "total_cost": money(_total(data)),
+        "today_estimated_cost": money(sum((c.estimated for c in today_data.cells.values()), 0)),
+        "month_to_date_cost": money(_total(mtd)),
         "by_model": by_model,
     }

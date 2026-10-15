@@ -2,7 +2,7 @@
 
 import uuid
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Annotated
 
@@ -10,6 +10,7 @@ from fastapi import Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ai_cost_tracker.api.queries import Filters
 from ai_cost_tracker.config import Settings, get_settings
 from ai_cost_tracker.db.models import Tenant
 from ai_cost_tracker.db.session import get_session
@@ -58,8 +59,35 @@ def date_range(
     return DateRange(start, end)
 
 
+def get_today() -> date:
+    """Today's UTC date; a dependency so tests can pin "today" and "month to date"."""
+    return datetime.now(UTC).date()
+
+
+def cost_filters(
+    account_id: Annotated[str | None, Query(description="Subscription / account id")] = None,
+    model: Annotated[str | None, Query(description='Model, or "unmapped"')] = None,
+    tag: Annotated[
+        str | None,
+        Query(
+            description="key:value tag on the deployment. Billed cost is per resource, so a "
+            "resource whose deployments carry different tags is split approximately "
+            "(ARCHITECTURE.md §4.4)",
+            pattern=r"^[^:]+:.*$",
+        ),
+    ] = None,
+) -> Filters:
+    parsed = None
+    if tag is not None:
+        key, value = tag.split(":", 1)
+        parsed = (key, value)
+    return Filters(account_id=account_id, model=model, tag=parsed)
+
+
 TenantId = Annotated[uuid.UUID, Depends(get_tenant_id)]
 Range = Annotated[DateRange, Depends(date_range)]
+Today = Annotated[date, Depends(get_today)]
+CostFilters = Annotated[Filters, Depends(cost_filters)]
 
 
 def money(value: Decimal | float | int | None) -> str:
