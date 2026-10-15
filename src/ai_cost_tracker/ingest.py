@@ -6,6 +6,7 @@ the account and range, then insert what the connector returned, in one transacti
 therefore leaves identical rows, and late billing corrections overwrite stale figures.
 """
 
+import logging
 import uuid
 from collections.abc import Iterable
 from datetime import UTC, date, datetime
@@ -25,6 +26,8 @@ from ai_cost_tracker.db.models import (
     Tenant,
     TokenUsageRow,
 )
+
+logger = logging.getLogger(__name__)
 
 
 async def get_or_create_tenant(
@@ -49,10 +52,17 @@ async def sync_inventory(
     session: AsyncSession, tenant_id: uuid.UUID, connector: Connector
 ) -> dict[str, list[Deployment]]:
     """Upsert accounts and deployments; soft-delete deployments the cloud no longer reports."""
-    accounts = await connector.list_accounts()
     found: dict[str, list[Deployment]] = {}
-    for account in accounts:
-        found[account.account_id] = await connector.list_deployments(account.account_id)
+    accounts = []
+    for account in await connector.list_accounts():
+        # One unreadable subscription (e.g. Reader removed) must not block the others; its
+        # stored inventory is left untouched rather than marked deleted.
+        try:
+            found[account.account_id] = await connector.list_deployments(account.account_id)
+        except Exception:
+            logger.exception("listing deployments failed for account %s", account.account_id)
+            continue
+        accounts.append(account)
 
     now = datetime.now(UTC)
     try:

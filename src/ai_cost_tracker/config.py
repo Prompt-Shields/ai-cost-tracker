@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     # Refused unless environment == "local".
     auth_disabled: bool = False
     environment: Literal["local", "test", "production"] = "local"
+    # Browser origins allowed to call the API (the web app). Locally defaults to
+    # http://localhost:3000.
+    web_origins: list[str] = []
 
     # Which connector the worker runs. "fake" replays deterministic demo data.
     connector: Literal["fake", "azure"] = "fake"

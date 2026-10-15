@@ -270,3 +270,17 @@ async def test_failed_ingest_leaves_previous_rows(session, tenant_id, monkeypatc
     with pytest.raises(RuntimeError):
         await ingest_cost(session, tenant_id, stub, "sub-1", D1, D1)
     assert await _cost_stats(session) == (1, Decimal(1))
+
+
+async def test_sync_inventory_skips_unreadable_account(session, tenant_id, monkeypatch):
+    stub = StubConnector(deployments=[_dep("a")])
+    await sync_inventory(session, tenant_id, stub)
+
+    async def boom(account_id):
+        raise PermissionError("Reader removed")
+
+    monkeypatch.setattr(stub, "list_deployments", boom)
+    found = await sync_inventory(session, tenant_id, stub)
+    assert found == {}
+    row = await session.scalar(select(DeploymentRow))
+    assert row.deleted_at is None  # stored inventory untouched, not marked deleted
