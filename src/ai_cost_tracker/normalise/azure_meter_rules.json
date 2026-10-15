@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "_comment": "Tokens are lowercase pieces of the meter name split on spaces, hyphens and underscores. Rules are tried in order; the first whose 'all' tokens are all present wins.",
+  "model_families": [
+    "^gpt-",
+    "^o\\d+(-|$)",
+    "^text-embedding-",
+    "^dall-e-",
+    "^whisper(-|$)",
+    "^tts(-|$)",
+    "^sora(-|$)",
+    "^computer-use-",
+    "^codex-",
+    "^davinci-",
+    "^babbage-"
+  ],
+  "model_aliases": {
+    "gpt-3.5-turbo": "gpt-35-turbo",
+    "gpt-3.5-turbo-instruct": "gpt-35-turbo-instruct"
+  },
+  "direction_rules": [
+    {"all": ["cchd"], "direction": "cached_input"},
+    {"all": ["cached"], "direction": "cached_input"},
+    {"all": ["cache"], "direction": "cached_input"},
+    {"all": ["training"], "direction": "training"},
+    {"all": ["trng"], "direction": "training"},
+    {"all": ["hosting"], "direction": "hosting"},
+    {"all": ["hostg"], "direction": "hosting"},
+    {"all": ["hosted"], "direction": "hosting"},
+    {"all": ["inp"], "direction": "input"},
+    {"all": ["input"], "direction": "input"},
+    {"all": ["outp"], "direction": "output"},
+    {"all": ["output"], "direction": "output"},
+    {"all": ["provisioned"], "direction": "provisioned"},
+    {"all": ["ptu"], "direction": "provisioned"}
+  ],
+  "deployment_rules": [
+    {"all": ["batch"], "deployment_type": "batch"},
+    {"all": ["provisioned"], "deployment_type": "provisioned"},
+    {"all": ["ptu"], "deployment_type": "provisioned"},
+    {"all": ["dzone"], "deployment_type": "data_zone"},
+    {"all": ["datazone"], "deployment_type": "data_zone"},
+    {"all": ["data", "zone"], "deployment_type": "data_zone"},
+    {"all": ["glbl"], "deployment_type": "global"},
+    {"all": ["global"], "deployment_type": "global"},
+    {"all": ["regnl"], "deployment_type": "regional"},
+    {"all": ["rgnl"], "deployment_type": "regional"},
+    {"all": ["regional"], "deployment_type": "regional"}
+  ],
+  "_stop_comment": "Tokens that end the model name, in addition to every token used by a rule above.",
+  "stop_tokens": [
+    "tokens", "token", "1k", "1m", "units", "unit", "hours", "hour", "hr",
+    "images", "image", "standard", "hd", "managed", "ftuned", "ft", "fine", "tuned",
+    "aud", "audio", "txt", "img", "characters", "chars", "seconds", "minutes",
+    "zone", "dz", "std", "developer", "dev"
+  ]
+}
