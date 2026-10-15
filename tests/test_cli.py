@@ -19,7 +19,31 @@ def test_parser_commands():
     assert parser.parse_args(["ingest-once"]).command == "ingest-once"
 
 
-@pytest.mark.parametrize("argv", [[], ["seed-demo", "--days", "0"], ["bogus"]])
+def test_parser_operator_tools():
+    parser = cli.build_parser()
+    args = parser.parse_args(["spike-azure", "--subscription", "sub-1"])
+    assert (args.subscription, args.days, str(args.out)) == (
+        "sub-1",
+        3,
+        "docs/spikes/azure-payg.md",
+    )
+    args = parser.parse_args(
+        ["compare-cost-analysis", "--csv", "x.csv", "--start", "2026-10-01", "--json"]
+    )
+    assert str(args.start) == "2026-10-01" and args.end is None and args.json
+    assert str(args.tolerance) == "1"
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        [],
+        ["seed-demo", "--days", "0"],
+        ["bogus"],
+        ["compare-cost-analysis"],
+        ["compare-cost-analysis", "--csv", "x.csv", "--start", "12/10/2026"],
+    ],
+)
 def test_parser_rejects_bad_input(argv):
     with pytest.raises(SystemExit):
         cli.build_parser().parse_args(argv)
