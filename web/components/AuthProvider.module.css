@@ -1,0 +1,41 @@
+.centered {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+}
+
+.card {
+  max-width: 420px;
+  width: 100%;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px;
+  text-align: center;
+}
+
+.card h1 {
+  font-size: 1.25rem;
+  margin: 0 0 8px;
+}
+
+.card p {
+  color: var(--text-secondary);
+  margin: 0 0 16px;
+}
+
+.primary {
+  font: inherit;
+  font-weight: 600;
+  color: var(--on-accent);
+  background: var(--accent);
+  border: 0;
+  border-radius: 8px;
+  padding: 10px 16px;
+  cursor: pointer;
+}
+
+.primary:hover {
+  background: var(--accent-hover);
+}

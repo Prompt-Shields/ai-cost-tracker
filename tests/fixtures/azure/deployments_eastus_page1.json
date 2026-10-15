@@ -1,0 +1,17 @@
+{
+  "value": [
+    {
+      "id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-ai/providers/Microsoft.CognitiveServices/accounts/aoai-eastus/deployments/search-chat-gpt4o",
+      "type": "Microsoft.CognitiveServices/accounts/deployments",
+      "name": "search-chat-gpt4o",
+      "sku": {"name": "GlobalStandard", "capacity": 450},
+      "tags": {"app": "chat", "env": "staging"},
+      "properties": {
+        "model": {"format": "OpenAI", "name": "gpt-4o", "version": "2024-08-06"},
+        "versionUpgradeOption": "OnceNewDefaultVersionAvailable",
+        "provisioningState": "Succeeded"
+      }
+    }
+  ],
+  "nextLink": "https://management.azure.com/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-ai/providers/Microsoft.CognitiveServices/accounts/aoai-eastus/deployments?api-version=2024-10-01&$skipToken=page2"
+}

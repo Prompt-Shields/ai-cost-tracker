@@ -1,0 +1,121 @@
+"""Azure Monitor token metrics for Cognitive Services accounts.
+
+Unverified until the phase 0 spike (issue #2) lists ``metricDefinitions`` on a live resource
+(ARCHITECTURE.md §14):
+- metric names. Classic Azure OpenAI exposes ``ProcessedPromptTokens`` / ``GeneratedTokens``
+  / ``AzureOpenAIRequests``; newer AI Foundry resources may use different names, so they are
+  module constants;
+- the ``ModelDeploymentName`` dimension name (matched case-insensitively);
+- the per-request timespan limit. We send at most seven days per call to stay well inside
+  documented limits and keep responses small;
+- the ``top`` cap. Splitting by a dimension returns only the top 10 series unless ``top`` is
+  raised, which would silently drop deployments on busy accounts.
+"""
+
+from datetime import UTC, datetime, timedelta
+from typing import Any
+
+from ai_cost_tracker.core.models import Deployment, TokenUsage
+
+API_VERSION = "2023-10-01"
+
+INPUT_METRIC = "ProcessedPromptTokens"
+OUTPUT_METRIC = "GeneratedTokens"
+REQUESTS_METRIC = "AzureOpenAIRequests"
+DEPLOYMENT_DIMENSION = "ModelDeploymentName"
+
+MAX_SPAN = timedelta(days=7)
+MAX_SERIES = 1000
+
+_FIELD_FOR = {
+    INPUT_METRIC.lower(): "input_tokens",
+    OUTPUT_METRIC.lower(): "output_tokens",
+    REQUESTS_METRIC.lower(): "requests",
+}
+
+
+def to_utc(value: datetime) -> datetime:
+    """Naive datetimes are treated as UTC, not local time."""
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+
+
+def time_chunks(start: datetime, end: datetime) -> list[tuple[datetime, datetime]]:
+    """Split ``[start, end)`` into ≤ ``MAX_SPAN`` pieces, start floored to the hour.
+
+    Flooring keeps hourly buckets aligned to clock hours (assumption: Monitor aligns
+    ``PT1H`` buckets to the timespan start).
+    """
+    start = to_utc(start).replace(minute=0, second=0, microsecond=0)
+    end = to_utc(end)
+    chunks = []
+    while start < end:
+        stop = min(start + MAX_SPAN, end)
+        chunks.append((start, stop))
+        start = stop
+    return chunks
+
+
+def metrics_request(resource_id: str, start: datetime, end: datetime) -> tuple[str, dict]:
+    """Path and query params for one metrics call; httpx URL-encodes ``$filter`` etc."""
+    return (
+        f"{resource_id}/providers/Microsoft.Insights/metrics",
+        {
+            "api-version": API_VERSION,
+            "metricnames": ",".join([INPUT_METRIC, OUTPUT_METRIC, REQUESTS_METRIC]),
+            "timespan": f"{_iso(start)}/{_iso(end)}",
+            "interval": "PT1H",
+            "aggregation": "Total",
+            "$filter": f"{DEPLOYMENT_DIMENSION} eq '*'",
+            "top": str(MAX_SERIES),
+        },
+    )
+
+
+def parse_metrics(
+    account_id: str, resource_id: str, deployments: list[Deployment], payload: dict[str, Any]
+) -> list[TokenUsage]:
+    """One ``TokenUsage`` per (deployment, hour) with any non-zero metric.
+
+    Deployments seen in metrics but missing from ``deployments`` (created since the last
+    inventory sync) are kept with ``model=None`` rather than dropped.
+    """
+    rid = resource_id.lower()
+    models = {d.name: d.model for d in deployments if d.resource_id.lower() == rid}
+    buckets: dict[tuple[str, datetime], TokenUsage] = {}
+
+    for metric in payload.get("value") or []:
+        field = _FIELD_FOR.get(((metric.get("name") or {}).get("value") or "").lower())
+        if field is None:
+            continue
+        for series in metric.get("timeseries") or []:
+            deployment = _dimension(series, DEPLOYMENT_DIMENSION)
+            if not deployment:
+                continue
+            for point in series.get("data") or []:
+                total = point.get("total")
+                if not total:
+                    continue
+                stamp = to_utc(datetime.fromisoformat(point["timeStamp"].replace("Z", "+00:00")))
+                usage = buckets.get((deployment, stamp))
+                if usage is None:
+                    usage = buckets[(deployment, stamp)] = TokenUsage(
+                        cloud="azure",
+                        account_id=account_id,
+                        resource_id=resource_id,
+                        deployment=deployment,
+                        model=models.get(deployment),
+                        bucket_start=stamp,
+                    )
+                setattr(usage, field, getattr(usage, field) + round(total))
+    return sorted(buckets.values(), key=lambda u: (u.deployment, u.bucket_start))
+
+
+def _dimension(series: dict[str, Any], name: str) -> str | None:
+    for item in series.get("metadatavalues") or []:
+        if ((item.get("name") or {}).get("value") or "").lower() == name.lower():
+            return item.get("value")
+    return None
+
+
+def _iso(value: datetime) -> str:
+    return to_utc(value).strftime("%Y-%m-%dT%H:%M:%SZ")

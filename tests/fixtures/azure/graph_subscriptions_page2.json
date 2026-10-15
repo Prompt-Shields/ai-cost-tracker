@@ -1,0 +1,9 @@
+{
+  "totalRecords": 3,
+  "count": 1,
+  "data": [
+    {"subscriptionId": "33333333-3333-3333-3333-333333333333", "name": "contoso-ai-dev", "aiAccounts": 1}
+  ],
+  "facets": [],
+  "resultTruncated": "false"
+}
