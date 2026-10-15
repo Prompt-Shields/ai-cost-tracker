@@ -1,0 +1,19 @@
+{
+  "id": "subscriptions/11111111-1111-1111-1111-111111111111/providers/Microsoft.CostManagement/query/9f1c2e44-0000-0000-0000-000000000002",
+  "name": "9f1c2e44-0000-0000-0000-000000000002",
+  "type": "Microsoft.CostManagement/query",
+  "properties": {
+    "nextLink": null,
+    "columns": [
+      {"name": "Cost", "type": "Number"},
+      {"name": "UsageQuantity", "type": "Number"},
+      {"name": "UsageDate", "type": "Number"},
+      {"name": "ResourceId", "type": "String"},
+      {"name": "Meter", "type": "String"},
+      {"name": "Currency", "type": "String"}
+    ],
+    "rows": [
+      [0.0126, 0.084, 20261013, "/subscriptions/11111111-1111-1111-1111-111111111111/resourcegroups/rg-ai/providers/microsoft.cognitiveservices/accounts/foundry-swc", "o3-mini-0131 Inp DZone 1M Tokens", "USD"]
+    ]
+  }
+}

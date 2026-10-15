@@ -1,0 +1,77 @@
+{
+  "cost": 7199,
+  "timespan": "2026-10-12T00:00:00Z/2026-10-12T02:00:00Z",
+  "interval": "PT1H",
+  "value": [
+    {
+      "id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-ai/providers/Microsoft.CognitiveServices/accounts/aoai-eastus/providers/Microsoft.Insights/metrics/ProcessedPromptTokens",
+      "type": "Microsoft.Insights/metrics",
+      "name": {"value": "ProcessedPromptTokens", "localizedValue": "Processed Prompt Tokens"},
+      "displayDescription": "Number of prompt tokens processed (input) on an OpenAI model.",
+      "unit": "Count",
+      "timeseries": [
+        {
+          "metadatavalues": [{"name": {"value": "modeldeploymentname", "localizedValue": "modeldeploymentname"}, "value": "search-chat-gpt4o"}],
+          "data": [
+            {"timeStamp": "2026-10-12T00:00:00Z", "total": 120000.0},
+            {"timeStamp": "2026-10-12T01:00:00Z", "total": 98000.0}
+          ]
+        },
+        {
+          "metadatavalues": [{"name": {"value": "modeldeploymentname", "localizedValue": "modeldeploymentname"}, "value": "search-embed"}],
+          "data": [
+            {"timeStamp": "2026-10-12T00:00:00Z", "total": 500000.0},
+            {"timeStamp": "2026-10-12T01:00:00Z", "total": 0.0}
+          ]
+        }
+      ],
+      "errorCode": "Success"
+    },
+    {
+      "id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-ai/providers/Microsoft.CognitiveServices/accounts/aoai-eastus/providers/Microsoft.Insights/metrics/GeneratedTokens",
+      "type": "Microsoft.Insights/metrics",
+      "name": {"value": "GeneratedTokens", "localizedValue": "Generated Completion Tokens"},
+      "unit": "Count",
+      "timeseries": [
+        {
+          "metadatavalues": [{"name": {"value": "modeldeploymentname", "localizedValue": "modeldeploymentname"}, "value": "search-chat-gpt4o"}],
+          "data": [
+            {"timeStamp": "2026-10-12T00:00:00Z", "total": 15000.0},
+            {"timeStamp": "2026-10-12T01:00:00Z"}
+          ]
+        }
+      ],
+      "errorCode": "Success"
+    },
+    {
+      "id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-ai/providers/Microsoft.CognitiveServices/accounts/aoai-eastus/providers/Microsoft.Insights/metrics/AzureOpenAIRequests",
+      "type": "Microsoft.Insights/metrics",
+      "name": {"value": "AzureOpenAIRequests", "localizedValue": "Azure OpenAI Requests"},
+      "unit": "Count",
+      "timeseries": [
+        {
+          "metadatavalues": [{"name": {"value": "modeldeploymentname", "localizedValue": "modeldeploymentname"}, "value": "search-chat-gpt4o"}],
+          "data": [
+            {"timeStamp": "2026-10-12T00:00:00Z", "total": 240.0},
+            {"timeStamp": "2026-10-12T01:00:00Z", "total": 190.0}
+          ]
+        },
+        {
+          "metadatavalues": [{"name": {"value": "modeldeploymentname", "localizedValue": "modeldeploymentname"}, "value": "search-embed"}],
+          "data": [
+            {"timeStamp": "2026-10-12T00:00:00Z", "total": 1000.0}
+          ]
+        },
+        {
+          "metadatavalues": [{"name": {"value": "modeldeploymentname", "localizedValue": "modeldeploymentname"}, "value": "new-unsynced"}],
+          "data": [
+            {"timeStamp": "2026-10-12T01:00:00Z", "total": 3.0}
+          ]
+        }
+      ],
+      "errorCode": "Success"
+    }
+  ],
+  "namespace": "Microsoft.CognitiveServices/accounts",
+  "resourceregion": "eastus"
+}

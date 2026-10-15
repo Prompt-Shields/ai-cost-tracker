@@ -1,0 +1,14 @@
+{
+  "value": [
+    {
+      "id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-ai/providers/Microsoft.CognitiveServices/accounts/aoai-eastus/deployments/search-embed",
+      "type": "Microsoft.CognitiveServices/accounts/deployments",
+      "name": "search-embed",
+      "sku": {"name": "Standard", "capacity": 120},
+      "properties": {
+        "model": {"format": "OpenAI", "name": "text-embedding-3-small", "version": "1"},
+        "provisioningState": "Succeeded"
+      }
+    }
+  ]
+}

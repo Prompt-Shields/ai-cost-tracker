@@ -1,0 +1,20 @@
+{
+  "id": "subscriptions/33333333-3333-3333-3333-333333333333/providers/Microsoft.CostManagement/query/9f1c2e44-0000-0000-0000-000000000003",
+  "name": "9f1c2e44-0000-0000-0000-000000000003",
+  "type": "Microsoft.CostManagement/query",
+  "properties": {
+    "nextLink": null,
+    "columns": [
+      {"name": "PreTaxCost", "type": "Number"},
+      {"name": "UsageQuantity", "type": "Number"},
+      {"name": "ResourceId", "type": "String"},
+      {"name": "Meter", "type": "String"},
+      {"name": "UsageDate", "type": "Datetime"},
+      {"name": "Currency", "type": "String"}
+    ],
+    "rows": [
+      [0.75, 5.0, "/subscriptions/33333333-3333-3333-3333-333333333333/resourcegroups/rg-dev/providers/microsoft.cognitiveservices/accounts/aoai-dev", "gpt-4o-mini-0718-Inp-glbl", "2026-09-30T00:00:00", "EUR"],
+      [0.0, null, "", "Unassigned", "2026-10-01T00:00:00", "EUR"]
+    ]
+  }
+}
