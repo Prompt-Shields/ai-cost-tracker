@@ -477,3 +477,32 @@ async def test_openapi_documents_endpoints(app):
     assert {"start", "end", "group_by", "account_id", "model", "tag"} <= params
     assert "/api/v1/deployments/{deployment_id}/daily" in paths
     assert {p["name"] for p in paths["/api/v1/summary"]["get"]["parameters"]} >= {"tag", "model"}
+
+
+def test_ptu_capacity_cost_goes_to_provisioned_deployments():
+    from types import SimpleNamespace
+
+    from ai_cost_tracker.api.queries import Inventory
+
+    rid = "/subscriptions/s/resourceGroups/rg/providers/Microsoft.CognitiveServices/accounts/a"
+    rows = [
+        SimpleNamespace(
+            resource_id=rid,
+            name="chat",
+            model="gpt-4o",
+            sku="GlobalStandard",
+            tags={},
+            deleted_at=None,
+        ),
+        SimpleNamespace(
+            resource_id=rid,
+            name="ptu",
+            model="gpt-4o",
+            sku="ProvisionedManaged",
+            tags={},
+            deleted_at=None,
+        ),
+    ]
+    inv = Inventory(rows)
+    assert [r.name for r in inv.candidates(rid, "provisioned-throughput")] == ["ptu"]
+    assert [r.name for r in inv.candidates(rid, "gpt-4o")] == ["chat", "ptu"]

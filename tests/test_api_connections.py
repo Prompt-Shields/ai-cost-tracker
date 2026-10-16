@@ -181,3 +181,33 @@ async def test_track_enqueues_backfill(client, session, tenant_id, principal, en
 
     resp = await client.post("/api/v1/connections/missing/track", json={"tracked": True})
     assert resp.status_code == 404
+
+
+async def test_track_and_untrack_write_audit_rows(client, session, tenant_id, principal):
+    from sqlalchemy import select
+
+    from ai_cost_tracker.db.models import AuditLog
+
+    principal[0] = ADMIN
+    session.add(_account(tenant_id, "new", "New", tracked=False, has_ai_resources=True))
+    await session.commit()
+    await client.post("/api/v1/connections/new/track", json={"tracked": True})
+    await client.post("/api/v1/connections/new/track", json={"tracked": False})
+    rows = (await session.scalars(select(AuditLog).order_by(AuditLog.id))).all()
+    assert [(r.action, r.target_id, r.actor_id) for r in rows] == [
+        ("connection.track", "new", "a1"),
+        ("connection.untrack", "new", "a1"),
+    ]
+
+
+async def test_viewer_track_writes_no_audit_row(client, session, tenant_id):
+    from sqlalchemy import select
+
+    from ai_cost_tracker.db.models import AuditLog
+
+    session.add(_account(tenant_id, "new", "New", tracked=False))
+    await session.commit()
+    assert (
+        await client.post("/api/v1/connections/new/track", json={"tracked": True})
+    ).status_code == 403
+    assert (await session.scalars(select(AuditLog))).all() == []

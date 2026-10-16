@@ -30,6 +30,7 @@ from sqlalchemy import Date, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
+from ai_cost_tracker.connectors.base import is_provisioned
 from ai_cost_tracker.db.models import (
     CostLine,
     DailyEstimate,
@@ -37,6 +38,7 @@ from ai_cost_tracker.db.models import (
     Reconciliation,
     TokenUsageRow,
 )
+from ai_cost_tracker.normalise.azure_meters import PROVISIONED_MODEL
 
 UNMAPPED = "unmapped"
 UNTAGGED = "untagged"
@@ -103,11 +105,11 @@ class Inventory:
         return {k: v for k, v in siblings[0].items() if all(s.get(k) == v for s in siblings)}
 
     def candidates(self, resource_id: str, model: str) -> list[DeploymentRow]:
-        return [
-            r
-            for r in self.by_resource.get(resource_id, [])
-            if (r.model or "").lower() == model.lower()
-        ]
+        rows = self.by_resource.get(resource_id, [])
+        if model == PROVISIONED_MODEL:
+            # PTU capacity meters name no model: they belong to the provisioned deployments.
+            return [r for r in rows if is_provisioned(r.sku)]
+        return [r for r in rows if (r.model or "").lower() == model.lower()]
 
 
 def deployment_label(resource_id: str, deployment: str | None) -> str:

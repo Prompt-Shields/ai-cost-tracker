@@ -84,7 +84,17 @@ def seed_demo(days: int) -> PassResult:
     connector = FakeConnector()
     # Prices first: the backfill computes estimates and reconciles against them.
     asyncio.run(_with_db(seed_prices, connector))
-    return asyncio.run(_with_db(run_backfill, connector, days=days))
+    result = asyncio.run(_with_db(run_backfill, connector, days=days))
+    asyncio.run(_with_db(seed_ptu, connector, days=days))
+    return result
+
+
+async def seed_ptu(session_factory, connector: Connector, settings, days: int) -> PassResult:
+    """Hourly utilisation for the demo's provisioned deployment (the PTU report)."""
+    from ai_cost_tracker.ptu import backfill_ptu
+
+    rows = await backfill_ptu(session_factory, settings, days=days, connector=connector)
+    return PassResult(rows=rows)
 
 
 async def seed_prices(session_factory, connector: Connector, settings) -> PassResult:

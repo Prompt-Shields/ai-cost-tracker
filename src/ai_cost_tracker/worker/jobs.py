@@ -9,6 +9,7 @@ throttling, bad data) is logged and recorded, and the rest still ingest.
 
 import asyncio
 import hashlib
+import importlib
 import logging
 import uuid
 from collections.abc import Awaitable, Callable
@@ -578,6 +579,14 @@ async def run_account_backfill(
     cost_from = await _backfill_cost(session_factory, connector, tenant_id, acct, today, result)
     await run_estimates(session_factory, tenant_id, usage_from, today)
     await run_reconcile(session_factory, tenant_id, cost_from, today, today)
+    try:  # PTU utilisation history for provisioned deployments (no-op when there are none)
+        from ai_cost_tracker.ptu import backfill_ptu
+
+        await backfill_ptu(
+            session_factory, settings, now=now, account_id=account_id, connector=connector
+        )
+    except Exception:
+        log.exception("PTU backfill failed for %s", account_id)
     log.info("backfill %s: %d rows, failed=%s", account_id, result.rows, result.failed)
     return result
 
@@ -815,3 +824,45 @@ async def check_access_job(ctx: dict[str, Any]) -> dict[str, Any]:
 
     connected = await run_access_check(*_deps(), enqueue=enqueue if redis is not None else None)
     return {"connected": connected}
+
+
+# --- M2 jobs: each module exposes run_<name>(session_factory, settings) -> int. -----------
+# Imported lazily so one module's import error doesn't stop the worker, and failures are
+# logged and reported rather than raised (arq would otherwise retry the whole job).
+
+_M2_JOBS = {
+    "budgets": ("ai_cost_tracker.budgets", "run_budgets"),
+    "notifications": ("ai_cost_tracker.notify", "run_notifications"),
+    "daily_digest": ("ai_cost_tracker.notify", "run_daily_digest"),
+    "spikes_daily": ("ai_cost_tracker.spikes", "run_spike_detection"),
+    "spikes_intraday": ("ai_cost_tracker.spikes", "run_intraday_spikes"),
+    "untagged_weekly": ("ai_cost_tracker.allocation", "run_untagged_weekly"),
+    "ptu": ("ai_cost_tracker.ptu", "run_ptu"),
+}
+
+
+async def run_m2(name: str, session_factory: SessionFactory, settings: Settings) -> int | None:
+    module_name, attr = _M2_JOBS[name]
+    try:
+        fn = getattr(importlib.import_module(module_name), attr)
+        return await fn(session_factory, settings)
+    except Exception:
+        log.exception("%s job failed", name)
+        return None
+
+
+def _m2_job(name: str):
+    async def job(ctx: dict[str, Any]) -> dict[str, Any]:
+        return {name: await run_m2(name, get_sessionmaker(), get_settings())}
+
+    job.__name__ = job.__qualname__ = f"{name}_job"
+    return job
+
+
+budgets_job = _m2_job("budgets")
+notifications_job = _m2_job("notifications")
+daily_digest_job = _m2_job("daily_digest")
+spikes_daily_job = _m2_job("spikes_daily")
+spikes_intraday_job = _m2_job("spikes_intraday")
+untagged_weekly_job = _m2_job("untagged_weekly")
+ptu_job = _m2_job("ptu")

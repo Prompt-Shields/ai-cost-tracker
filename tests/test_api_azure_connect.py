@@ -297,3 +297,22 @@ async def test_pending(client, session, tenant_id, principal):
     assert body["share_url"] == f"https://costs.example.com/connect/pending/{SUB_B}"
 
     assert (await client.get(f"/api/v1/azure/pending/{SUB_A}")).status_code == 404
+
+
+async def test_connect_writes_audit_row_without_token(client, session, tenant_id, arm):
+    from ai_cost_tracker.db.models import AuditLog
+
+    arm.grants[f"/subscriptions/{SUB_B}"] = (403, {"error": {"code": "AuthorizationFailed"}})
+    resp = await client.post(
+        "/api/v1/azure/connect", headers=HEADERS, json={"subscription_ids": [SUB_A, SUB_B]}
+    )
+    assert resp.status_code == 200
+    rows = (await session.scalars(select(AuditLog))).all()
+    assert len(rows) == 1
+    row = rows[0]
+    assert (row.action, row.actor_id, row.tenant_id) == ("connection.connect", "a1", tenant_id)
+    assert row.details["subscriptions"] == [
+        {"subscription_id": SUB_A, "status": "connected"},
+        {"subscription_id": SUB_B, "status": "waiting_for_access"},
+    ]
+    assert "delegated" not in str(row.details) and "delegated" not in (row.target_id or "")

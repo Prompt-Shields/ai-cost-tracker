@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ai_cost_tracker import audit
 from ai_cost_tracker.api.auth import Principal, get_principal, require_role
 from ai_cost_tracker.api.deps import SessionDep, SettingsDep, TenantId
 from ai_cost_tracker.db.models import CloudAccountRow, SyncState
@@ -79,7 +80,7 @@ async def track_account(
     session: SessionDep,
     tenant_id: TenantId,
     settings: SettingsDep,
-    _: Annotated[Principal, Depends(require_role("admin"))],
+    admin: Annotated[Principal, Depends(require_role("admin"))],
     cloud: str = "azure",
 ) -> dict[str, Any]:
     account = await session.scalar(
@@ -91,7 +92,17 @@ async def track_account(
     )
     if account is None:
         raise HTTPException(404, f"Unknown account {account_id}")
+    previous = account.tracked
     account.tracked = body.tracked
+    audit.record(
+        session,
+        tenant_id,
+        admin,
+        "connection.track" if body.tracked else "connection.untrack",
+        target_type="cloud_account",
+        target_id=account.account_id,
+        details={"cloud": account.cloud, "name": account.name, "was_tracked": previous},
+    )
     await session.commit()
     if body.tracked and account.access_status == "connected":
         await enqueue_backfill(account.account_id, account.cloud)

@@ -192,6 +192,25 @@ can't tell them apart. Cost with no matching deployment stays on the resource as
 "unattributed" and only carries the tags all of the resource's deployments share. A day
 counts as billed per subscription once any cost line for it exists.
 
+**Cost centres (M2).** Allocation rules map deployments to a cost centre, team and app
+(`allocation.py`, `/allocation/*`). Rules run by ascending priority, then name; the first
+match wins. A rule matches on a tag (key case-insensitive, value exact), a glob on
+`<account resource name>/<deployment>` (case-insensitive) or a subscription id. A **split
+rule** overrides rules for one shared deployment and divides its cost by fixed percentages
+(summing to 100); split figures are flagged approximate. Unattributed resource cost always
+goes to "unallocated". Pieces are distributed by largest remainder on the 10-decimal quantum,
+so per-day cost-centre totals equal `/costs/daily` exactly. Deployments missing a required
+tag (`team`, `app`, `env`, `cost-centre`) appear in the untagged report, and on Mondays an
+`untagged_weekly` alert lists them for the previous week.
+
+**PTU capacity.** Provisioned (PTU) meters bill reserved capacity per hour and often name no
+model ("Provisioned Managed Regional Unit"). The parser maps them to the synthetic model
+`provisioned-throughput`, which the cost API attributes to the provisioned deployments on
+that resource; reconciliation leaves them out, since token estimates can't match hourly
+capacity. The PTU report (`ptu.py`, `/ptu`) joins that cost with hourly utilisation from
+Azure Monitor: idle cost = PTU cost × (1 − average utilisation); idle hours are hours under
+10% utilisation. Metric and meter names are unverified until #2.
+
 Per-user and per-prompt-route attribution needs request-level data and waits for the
 gateway (or APIM). Ingesting gateway events adds rows to `token_usage` with
 `source = gateway`; nothing else changes.
@@ -209,8 +228,10 @@ changes:
   cost data still shows the pre-credit charge. We report cost, and show credits separately
   only if we later read invoices.
 - **Billing period ≠ calendar month.** A pay-as-you-go invoice period follows each
-  subscription's sign-up day. The UI reports by calendar month by default, with an
-  "invoice period" view per subscription for reconciling against invoices.
+  subscription's sign-up day. The UI reports by calendar month by default; the invoice view
+  (`/invoices`, M2) uses each subscription's `billing_period_day` (1–28, set by an admin;
+  empty = calendar month) and shows billed cost, plus estimates for unbilled days. Its totals
+  are pre-credit cost.
 - **Cost via Query API.** The Cost Management Query API works at subscription scope for
   pay-as-you-go, needs only `Reader`, and avoids the EA / MCA-oriented Cost Details API and
   exports entirely. Phase 0 includes a one-day spike on one subscription to confirm the
@@ -238,6 +259,31 @@ recorded per subscription and source in `sync_state`, which drives the health pa
 
 Cost and usage writes are **idempotent per (subscription, source, range)**: a re-run deletes
 and rewrites that partition inside one transaction.
+
+### 5a. Alerts and notifications (M2)
+
+Jobs raise **alerts** (`alert_event`, one row per tenant + kind + stable subject) and the
+notifier delivers them; no job sends messages itself. Re-raising an alert whose condition
+got worse resets `notified_at` so it is sent again; alerts resolve when the condition
+clears, and alerts resolved by hand aren't reopened.
+
+| Job | Cadence (UTC) | Alert kind / subject |
+|-----|---------------|----------------------|
+| budgets | Hourly (:31) | `budget` per threshold crossed (`<budget>/<YYYY-MM>/<threshold>`; critical at ≥ 100%); `budget_forecast` (info) when the month-end forecast exceeds the budget. Forecast = spend so far + expected spend for the remaining days from the last 7 complete days (weekdays and weekends averaged separately). |
+| spikes (daily) | 06:27, after the cost pass | `spike` when yesterday's deployment cost > 2× the larger of the same-weekday median (4 weeks) and the 7-day median, and > $5 above it; critical above 5×. Needs 7 days of history. |
+| spikes (intraday) | Every 15 min | `spike_intraday` when the last 2 h of tokens exceed 2× the same hours on the same weekday (4-week median) and 100k tokens; one alert per deployment per day, re-sent only if it grows 50%. |
+| reconcile | After each cost pass | `variance` over 2% (see §5). |
+| access check / discovery | 10 min / daily | `access_lost`, `new_subscription`. |
+| untagged | Mondays 06:37 | `untagged_weekly` (info). |
+| PTU | Hourly (:17) | ingests utilisation for the PTU report (no alert yet). |
+
+**Notifier** (`notify/`, every 5 min; digest daily at 07:53): channels are email (SMTP
+settings), Slack incoming webhooks, Teams Workflows webhooks (Adaptive Card), and generic
+webhooks. Each channel filters by alert kind and minimum severity, or receives a daily digest
+instead. Failed sends are retried up to 3 times per channel; every attempt is recorded in
+`notification_delivery`. Generic webhooks carry `X-ACT-Timestamp` and
+`X-ACT-Signature: sha256=HMAC(secret, "<timestamp>.<body>")`, so receivers can reject replays.
+Webhook URLs and secrets are never returned in full or logged.
 
 ## 6. Data model
 
@@ -268,8 +314,12 @@ tenant ─┬─ user / role
 - **User login**: OIDC. v1 (internal) supports **Microsoft Entra ID** for our own tenant only,
   restricted to an allow-listed group. Google and other external IdPs are added when the tool
   opens to external users; SAML / generic OIDC for enterprise SSO after that.
-- **Sessions**: short-lived JWT access tokens + HTTP-only refresh cookie; API keys for
-  programmatic access (scoped, hashed at rest), compatible with the SDK's `ps-…` key format.
+- **Sessions**: short-lived Entra access tokens from MSAL in the browser.
+- **API keys** (M2) for scripts and BI tools: `act_<random>`, shown once, stored as a SHA-256
+  hash plus a display prefix, sent as `Authorization: Bearer act_…`. Keys carry roles
+  (admin / analyst / viewer, never owner); only owners create admin keys, and keys can't
+  create or revoke keys. Every request checks the database, so revoking takes effect
+  immediately.
 - **Tenant mapping**: v1 has one seeded internal tenant, and Entra group membership maps to
   roles. When opened up externally: the first user from an IdP domain creates the tenant;
   later users join via invite or domain claim.
@@ -279,7 +329,10 @@ tenant ─┬─ user / role
 - **Customer cloud credentials** never leave the backend: federated credentials where
   possible; anything that must be stored (e.g. a BYO client secret) is envelope-encrypted
   with a KMS / Key Vault key per tenant.
-- **Audit log** of logins, connection changes, role changes and exports.
+- **Audit log** (`audit_log`, `/audit`, admin only): every mutating endpoint writes an
+  audit row in the same transaction as the change (`audit.record`), never including
+  secrets. "login" means the first API use per principal per hour (from `GET /me`); it is
+  not an Entra sign-in event.
 
 ## 8. Multi-cloud expansion
 

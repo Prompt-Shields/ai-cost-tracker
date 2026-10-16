@@ -109,6 +109,9 @@ async def test_fake_connector_meters_all_parse() -> None:
     for rec in records:
         info = parse_meter(rec.sku_meter)
         assert info is not None, rec.sku_meter
+        if info.model == "provisioned-throughput":  # the demo PTU capacity line
+            assert info.direction == "provisioned"
+            continue
         assert info.model in {"gpt-4o", "gpt-4o-mini", "o3-mini"}
         assert info.version is not None and len(info.version) == 4
         assert info.direction in {"input", "output"}
@@ -119,3 +122,9 @@ def test_realtime_meter_short_names_match_deployment_model_names():
     # Meters abbreviate realtime models ("gpt-4o-rt"); deployments use the full name.
     assert parse_meter("gpt-4o-rt-1217 aud inp glbl").model == "gpt-4o-realtime-preview"
     assert parse_meter("gpt-4o-mini-rt Txt Inp glbl").model == "gpt-4o-mini-realtime-preview"
+
+
+def test_model_less_ptu_meters_map_to_provisioned_throughput():
+    info = parse_meter("Provisioned Managed Regional Unit")
+    assert (info.model, info.direction) == ("provisioned-throughput", "provisioned")
+    assert parse_meter("Some Unrelated Meter") is None
