@@ -60,15 +60,7 @@ export function DeploymentDetail({ id }: { id: string }) {
         <div className={styles.controls}>
           <Segmented label="Date range" options={RANGE_OPTIONS} value={days} onChange={setDays} />
           {state.status === "ready" && (
-            <ExportButton
-              name="costs-daily"
-              query={{
-                ...range,
-                group_by: "deployment",
-                account_id: state.data.deployment.account_id,
-                deployment_id: id,
-              }}
-            />
+            <ExportButton name="deployment-daily" query={{ ...range, deployment_id: id }} />
           )}
         </div>
       </div>

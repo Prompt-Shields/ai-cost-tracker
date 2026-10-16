@@ -54,6 +54,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             allow_origins=origins,
             allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
             allow_headers=["Authorization", "Content-Type", "X-Azure-Management-Token"],
+            # Lets the browser read the CSV export's filename.
+            expose_headers=["Content-Disposition"],
         )
 
     app.include_router(health.router)

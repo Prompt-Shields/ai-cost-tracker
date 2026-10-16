@@ -52,8 +52,13 @@ export function ApiKeys() {
       <section className={ui.panel}>
         <h2 className={ui.panelTitle}>Keys</h2>
         {keys.status === "loading" && <Skeleton height={160} label="Loading API keys…" />}
-        {keys.status === "error" && (
-          <ErrorNotice title="Couldn't load API keys" message={keys.message} onRetry={retry} />
+        {keys.status === "error" && me && !canManage ? (
+          // The API lists keys to admins only (key names and owners are sensitive).
+          <EmptyNotice title="Admins only">Ask an admin to create or review API keys.</EmptyNotice>
+        ) : (
+          keys.status === "error" && (
+            <ErrorNotice title="Couldn't load API keys" message={keys.message} onRetry={retry} />
+          )
         )}
         {keys.status === "ready" && keys.data.length === 0 && (
           <EmptyNotice title="No API keys yet">

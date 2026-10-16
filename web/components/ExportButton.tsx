@@ -10,6 +10,7 @@ export type ExportName =
   | "costs-daily"
   | "usage-daily"
   | "deployments"
+  | "deployment-daily"
   | "summary"
   | "cost-centres-daily";
 

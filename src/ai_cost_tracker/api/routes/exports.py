@@ -8,6 +8,7 @@ string, exactly as the JSON carries it.
 import csv
 import io
 import json
+import uuid
 from collections.abc import Iterable, Sequence
 from typing import Annotated, Any, Literal
 
@@ -99,6 +100,33 @@ async def usage_daily_csv(
     cols = ["day", "deployment", "model", "input_tokens", "output_tokens", "requests"]
     return await _respond(
         request, session, tenant_id, principal, "usage-daily", _csv(cols, data["rows"]), rng
+    )
+
+
+@router.get("/exports/deployment-daily.csv")
+async def deployment_daily_csv(
+    request: Request,
+    deployment_id: uuid.UUID,
+    rng: Range,
+    session: SessionDep,
+    tenant_id: TenantId,
+    principal: Caller,
+) -> Response:
+    """The deployment page's daily table (``/deployments/{id}/daily``)."""
+    data = await inventory.deployment_daily(
+        deployment_id=deployment_id, rng=rng, session=session, tenant_id=tenant_id
+    )
+    cols = [
+        "day",
+        "billed_cost",
+        "estimated_cost",
+        "input_tokens",
+        "output_tokens",
+        "cost_per_1m_tokens",
+        "day_status",
+    ]
+    return await _respond(
+        request, session, tenant_id, principal, "deployment-daily", _csv(cols, data["rows"]), rng
     )
 
 

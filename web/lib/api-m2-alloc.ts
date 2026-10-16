@@ -179,7 +179,7 @@ export class AllocApi {
 
 // ---- Rule matching (client-side preview; mirrors allocation.resolve) ----
 
-/** fnmatch-style glob: * any run, ? one char, [abc] / [!abc] classes. Case-sensitive. */
+/** fnmatch-style glob: * any run, ? one char, [abc] / [!abc] classes. Callers lowercase both sides. */
 export function globToRegExp(pattern: string): RegExp {
   let re = "";
   for (let i = 0; i < pattern.length; i++) {
@@ -208,10 +208,19 @@ export function matchSubject(d: Pick<Deployment, "resource_id" | "name">): strin
 
 export function ruleMatches(rule: AllocationRuleInput, d: Deployment): boolean {
   switch (rule.match_type) {
-    case "tag":
-      return !!rule.match_key && d.tags[rule.match_key] === rule.match_value;
+    case "tag": {
+      // Same semantics as the server (allocation.py): key case-insensitive, value exact.
+      const wanted = (rule.match_key ?? "").toLowerCase();
+      return (
+        !!wanted &&
+        Object.entries(d.tags).some(
+          ([k, v]) => k.toLowerCase() === wanted && String(v) === rule.match_value,
+        )
+      );
+    }
     case "name_pattern":
-      return globToRegExp(rule.match_value).test(matchSubject(d));
+      // Case-insensitive glob, like the server's fnmatchcase on lowercased strings.
+      return globToRegExp(rule.match_value.toLowerCase()).test(matchSubject(d).toLowerCase());
     case "account":
       return d.account_id === rule.match_value;
     default:

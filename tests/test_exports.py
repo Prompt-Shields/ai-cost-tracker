@@ -190,3 +190,16 @@ async def test_export_rejects_bad_params_like_json(client):
     assert (await client.get("/api/v1/exports/costs-daily.csv", params=bad)).status_code == 422
     resp = await client.get("/api/v1/exports/costs-daily.csv", params={"group_by": "nope"})
     assert resp.status_code == 422
+
+
+async def test_deployment_daily_csv_matches_deployment_page(client):
+    deployments = (await client.get("/api/v1/deployments")).json()
+    for dep in deployments:
+        q = RANGE | {"deployment_id": dep["id"]}
+        expected = (await client.get(f"/api/v1/deployments/{dep['id']}/daily", params=RANGE)).json()
+        rows = _parse(await client.get("/api/v1/exports/deployment-daily.csv", params=q))
+        assert (
+            rows == [{k: _str(r[k]) for k in rows[0]} for r in expected["rows"]]
+            if rows
+            else (expected["rows"] == [])
+        )
