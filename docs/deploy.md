@@ -116,6 +116,10 @@ Create the environment **production** (Settings → Environments) with required 
 "Deployment branches: `main` only". Add these as **environment variables** (none is a
 secret):
 
+Finally, turn deploys on with a **repository** variable (Settings → Secrets and variables →
+Actions → Variables): `DEPLOY_ENABLED` = `true`. Until it is set, pushes to `main` skip the
+deploy job instead of failing.
+
 | Variable | Example | Notes |
 |---|---|---|
 | `AZURE_CLIENT_ID` | `$APP_ID` from step 2 | Deployer app registration. |
