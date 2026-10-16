@@ -1,0 +1,394 @@
+/* Shared styles for the cost-centre, allocation and PTU pages (M2). Tokens come from globals.css. */
+
+.root {
+  /* Sequential blue ramp (dataviz reference). Low values recede toward the surface. */
+  --seq-0: #cde2fb;
+  --seq-1: #9ec5f4;
+  --seq-2: #6da7ec;
+  --seq-3: #3987e5;
+  --seq-4: #256abf;
+  --seq-5: #184f95;
+  --seq-6: #0d366b;
+  --meter-track: #cde2fb;
+  --meter-fill: #2a78d6;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .root {
+    --seq-0: #0d366b;
+    --seq-1: #104281;
+    --seq-2: #184f95;
+    --seq-3: #256abf;
+    --seq-4: #3987e5;
+    --seq-5: #6da7ec;
+    --seq-6: #b7d3f6;
+    --meter-track: #184f95;
+    --meter-fill: #6da7ec;
+  }
+}
+
+:root[data-theme="dark"] .root {
+  --seq-0: #0d366b;
+  --seq-1: #104281;
+  --seq-2: #184f95;
+  --seq-3: #256abf;
+  --seq-4: #3987e5;
+  --seq-5: #6da7ec;
+  --seq-6: #b7d3f6;
+  --meter-track: #184f95;
+  --meter-fill: #6da7ec;
+}
+
+/* Buttons */
+
+.primary,
+.secondary,
+.danger {
+  font: inherit;
+  font-size: 14px;
+  border-radius: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.primary {
+  font-weight: 600;
+  color: var(--on-accent);
+  background: var(--accent);
+  border: 1px solid transparent;
+}
+
+.primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.secondary {
+  color: var(--text-primary);
+  background: transparent;
+  border: 1px solid var(--border-strong);
+}
+
+.secondary:hover:not(:disabled),
+.danger:hover:not(:disabled) {
+  background: var(--wash);
+}
+
+.danger {
+  color: var(--critical);
+  background: transparent;
+  border: 1px solid var(--border-strong);
+}
+
+.primary:disabled,
+.secondary:disabled,
+.danger:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.primary:focus-visible,
+.secondary:focus-visible,
+.danger:focus-visible,
+.field input:focus-visible,
+.field select:focus-visible,
+.rowButton:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.small {
+  padding: 3px 8px;
+  font-size: 13px;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Forms */
+
+.form {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 16px;
+  background: var(--page);
+}
+
+.formTitle {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0 0 12px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.field input,
+.field select {
+  font: inherit;
+  font-size: 14px;
+  color: var(--text-primary);
+  background: var(--surface-1);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  padding: 6px 10px;
+  min-width: 0;
+  width: 100%;
+}
+
+.hint {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.error {
+  color: var(--critical);
+  font-size: 14px;
+  margin: 8px 0 0;
+}
+
+.fieldset {
+  border: 0;
+  padding: 0;
+  margin: 16px 0 0;
+}
+
+.legendText {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  padding: 0;
+  margin-bottom: 8px;
+}
+
+/* Split rows */
+
+.splitRow {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) 96px auto;
+  gap: 8px;
+  align-items: end;
+  margin-bottom: 8px;
+}
+
+.sum {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.sumBad {
+  color: var(--critical);
+}
+
+@media (max-width: 640px) {
+  .splitRow {
+    grid-template-columns: 1fr 1fr;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--grid);
+  }
+}
+
+/* Preview */
+
+.preview {
+  margin-top: 16px;
+}
+
+.previewTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin: 0 0 6px;
+}
+
+.code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px;
+  background: var(--wash);
+  border-radius: 4px;
+  padding: 0 4px;
+  overflow-wrap: anywhere;
+}
+
+.inactive {
+  opacity: 0.6;
+}
+
+.wrapCell {
+  white-space: normal !important;
+  min-width: 160px;
+}
+
+/* Meters (utilisation bars) */
+
+.meter {
+  display: inline-grid;
+  grid-template-columns: 72px auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.meterTrack {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--meter-track);
+  overflow: hidden;
+}
+
+.meterFill {
+  height: 100%;
+  border-radius: 4px;
+  background: var(--meter-fill);
+}
+
+.meterValue {
+  font-variant-numeric: tabular-nums;
+  min-width: 40px;
+  text-align: right;
+}
+
+/* Clickable table rows (PTU) */
+
+.clickRow {
+  cursor: pointer;
+}
+
+.clickRow:hover {
+  background: var(--wash);
+}
+
+.selectedRow {
+  background: var(--wash);
+}
+
+.rowButton {
+  font: inherit;
+  font-weight: 500;
+  color: var(--accent);
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+}
+
+/* Heatmap: day rows x 24 hour columns */
+
+.heat {
+  display: grid;
+  grid-template-columns: 52px repeat(24, minmax(0, 1fr));
+  gap: 2px;
+  font-size: 11px;
+  color: var(--text-muted);
+  max-width: 760px;
+}
+
+.heatDay {
+  text-align: right;
+  padding-right: 6px;
+  white-space: nowrap;
+  line-height: 1;
+  align-self: center;
+}
+
+.heatHour {
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.cell {
+  border-radius: 2px;
+  min-height: 10px;
+  border: 0;
+  padding: 0;
+  cursor: default;
+}
+
+.cell:hover,
+.cell:focus-visible {
+  outline: 2px solid var(--text-primary);
+  outline-offset: 0;
+  position: relative;
+  z-index: 1;
+}
+
+.cellEmpty {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--grid);
+}
+
+.heatLegend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.ramp {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.ramp span {
+  width: 18px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.readout {
+  min-height: 20px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0 0 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.readout strong {
+  color: var(--text-primary);
+}
+
+.hatchSwatch {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--series-other) 0 2px,
+    transparent 2px 4px
+  );
+  box-shadow: inset 0 0 0 1px var(--series-other);
+}
+
+.wide {
+  grid-column: 1 / -1;
+}
+
+.rowActions {
+  display: flex;
+  gap: 8px;
+}
