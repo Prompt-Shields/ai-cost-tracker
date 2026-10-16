@@ -19,7 +19,31 @@ def test_parser_commands():
     assert parser.parse_args(["ingest-once"]).command == "ingest-once"
 
 
-@pytest.mark.parametrize("argv", [[], ["seed-demo", "--days", "0"], ["bogus"]])
+def test_parser_operator_tools():
+    parser = cli.build_parser()
+    args = parser.parse_args(["spike-azure", "--subscription", "sub-1"])
+    assert (args.subscription, args.days, str(args.out)) == (
+        "sub-1",
+        3,
+        "docs/spikes/azure-payg.md",
+    )
+    args = parser.parse_args(
+        ["compare-cost-analysis", "--csv", "x.csv", "--start", "2026-10-01", "--json"]
+    )
+    assert str(args.start) == "2026-10-01" and args.end is None and args.json
+    assert str(args.tolerance) == "1"
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        [],
+        ["seed-demo", "--days", "0"],
+        ["bogus"],
+        ["compare-cost-analysis"],
+        ["compare-cost-analysis", "--csv", "x.csv", "--start", "12/10/2026"],
+    ],
+)
 def test_parser_rejects_bad_input(argv):
     with pytest.raises(SystemExit):
         cli.build_parser().parse_args(argv)
@@ -50,7 +74,8 @@ def azure_settings(monkeypatch):
 def test_seed_demo_migrates_then_ingests_with_fake_connector(calls, azure_settings):
     assert cli.main(["seed-demo", "--days", "3"]) == 0
     assert calls[0] == ("migrate",)
-    fn, connector, kwargs = calls[1]
+    assert calls[1][0] is cli.seed_prices
+    fn, connector, kwargs = calls[2]
     assert fn is run_backfill
     assert isinstance(connector, FakeConnector)
     assert kwargs == {"days": 3}
@@ -88,5 +113,5 @@ def test_seed_demo_end_to_end_on_sqlite(tmp_path, monkeypatch, azure_settings):
     with sqlite3.connect(path) as conn:
         days = conn.execute("select count(distinct charge_period_start) from cost_line").fetchone()
         usage = conn.execute("select count(*) from token_usage").fetchone()
-    assert days == (2,)
+    assert days == (1,)  # yesterday only: like real billing, today isn't billed yet
     assert usage[0] > 0

@@ -1,69 +1,56 @@
 "use client";
 
+import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { formatMoney } from "@/lib/format";
 import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Legend,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
-import { formatDay, formatMoney } from "@/lib/format";
-import type { DailyPoint, Series } from "@/lib/series";
-import styles from "./DailyCostChart.module.css";
+  ChartLegend,
+  ESTIMATED_OPACITY,
+  TooltipBox,
+  TooltipRow,
+  chartStyles as styles,
+  xAxisProps,
+  yAxisBase,
+} from "./chartParts";
+import type { DailyPoint, Series } from "./dailySeries";
 
 interface Props {
   points: DailyPoint[];
   series: Series[];
   currency: string;
+  height?: number;
+  /** Hide the series legend when the panel title already names the only series. */
+  showSeriesLegend?: boolean;
 }
 
-export function DailyCostChart({ points, series, currency }: Props) {
+/** Stacked daily cost; estimated segments are drawn lighter so billed and estimated never blur. */
+export function DailyCostChart({
+  points,
+  series,
+  currency,
+  height = 300,
+  showSeriesLegend = series.length > 1,
+}: Props) {
+  const anyEstimated = points.some((p) => Object.values(p.est).some(Boolean));
   return (
     <div className={styles.wrap}>
-      <ResponsiveContainer width="100%" height={300}>
+      <ResponsiveContainer width="100%" height={height}>
         <BarChart data={points} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
           <CartesianGrid vertical={false} stroke="var(--grid)" />
-          <XAxis
-            dataKey="day"
-            tickFormatter={formatDay}
-            tick={{ fill: "var(--text-muted)", fontSize: 12 }}
-            axisLine={{ stroke: "var(--axis)" }}
-            tickLine={false}
-            minTickGap={16}
-          />
-          <YAxis
-            tickFormatter={(v: number) => formatMoney(v, currency, true)}
-            tick={{ fill: "var(--text-muted)", fontSize: 12 }}
-            axisLine={false}
-            tickLine={false}
-            width={56}
-          />
+          <XAxis {...xAxisProps} />
+          <YAxis {...yAxisBase} tickFormatter={(v: number) => formatMoney(v, currency, true)} />
           <Tooltip
             cursor={{ fill: "var(--wash)" }}
-            content={({ active, payload, label }) => (
-              <ChartTooltip
-                active={active}
-                point={payload?.[0]?.payload as DailyPoint | undefined}
-                label={label}
-                currency={currency}
-                series={series}
-              />
-            )}
-          />
-          <Legend
-            iconType="square"
-            iconSize={10}
-            wrapperStyle={{ fontSize: 13, paddingTop: 8 }}
-            formatter={(value: string) => <span className={styles.legendText}>{value}</span>}
+            content={({ active, payload }) => {
+              const point = payload?.[0]?.payload as DailyPoint | undefined;
+              if (!active || !point) return null;
+              return <CostTooltip point={point} series={series} currency={currency} />;
+            }}
           />
           {series.map((s, i) => (
             <Bar
               key={s.key}
-              dataKey={s.key}
-              name={s.key}
+              dataKey={(p: DailyPoint) => p.v[s.key] ?? 0}
+              name={s.label}
               stackId="cost"
               fill={s.color}
               maxBarSize={24}
@@ -72,44 +59,51 @@ export function DailyCostChart({ points, series, currency }: Props) {
               strokeWidth={1}
               radius={i === series.length - 1 ? [4, 4, 0, 0] : 0}
               isAnimationActive={false}
-            />
+            >
+              {points.map((p) => (
+                <Cell key={p.day} style={p.est[s.key] ? { fillOpacity: ESTIMATED_OPACITY } : undefined} />
+              ))}
+            </Bar>
           ))}
         </BarChart>
       </ResponsiveContainer>
+      <ChartLegend
+        entries={showSeriesLegend ? series.map((s) => ({ label: s.label, color: s.color })) : []}
+        estimatedNote={anyEstimated}
+      />
     </div>
   );
 }
 
-interface TooltipProps {
-  active?: boolean;
-  point?: DailyPoint;
-  label?: string | number;
-  currency: string;
+function CostTooltip({
+  point,
+  series,
+  currency,
+}: {
+  point: DailyPoint;
   series: Series[];
-}
-
-function ChartTooltip({ active, point, label, currency, series }: TooltipProps) {
-  if (!active || !point) return null;
+  currency: string;
+}) {
   const items = series
-    .map((s) => ({ ...s, value: Number(point[s.key] ?? 0) }))
+    .map((s) => ({ ...s, value: point.v[s.key] ?? 0, estimated: Boolean(point.est[s.key]) }))
     .filter((s) => s.value > 0)
     .reverse(); // Match the visual stack order (top segment first).
   const total = items.reduce((sum, s) => sum + s.value, 0);
+  const allEstimated = items.length > 0 && items.every((s) => s.estimated);
   return (
-    <div className={styles.tooltip}>
-      <div className={styles.tooltipTitle}>{formatDay(String(label))}</div>
+    <TooltipBox day={point.day} estimated={allEstimated}>
       {items.map((s) => (
-        <div key={s.key} className={styles.tooltipRow}>
-          <span className={styles.swatch} style={{ background: s.color }} />
-          <span className={styles.tooltipLabel}>{s.key}</span>
-          <span className={styles.tooltipValue}>{formatMoney(s.value, currency)}</span>
-        </div>
+        <TooltipRow
+          key={s.key}
+          color={s.color}
+          label={s.label}
+          value={formatMoney(s.value, currency)}
+          estimated={s.estimated && !allEstimated}
+        />
       ))}
-      <div className={`${styles.tooltipRow} ${styles.tooltipTotal}`}>
-        <span />
-        <span className={styles.tooltipLabel}>Total</span>
-        <span className={styles.tooltipValue}>{formatMoney(total, currency)}</span>
-      </div>
-    </div>
+      {items.length !== 1 && (
+        <TooltipRow label="Total" value={formatMoney(total, currency)} total />
+      )}
+    </TooltipBox>
   );
 }

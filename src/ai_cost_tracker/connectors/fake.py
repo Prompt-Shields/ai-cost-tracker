@@ -50,12 +50,21 @@ _DEPLOYMENTS = [
 class FakeConnector:
     name = "fake"
 
-    async def list_accounts(self) -> list[CloudAccount]:
+    def __init__(self, today: date | None = None) -> None:
+        self._fixed_today = today
+
+    def _today(self) -> date:
+        return getattr(self, "_fixed_today", None) or datetime.now(UTC).date()
+
+    async def list_accounts(self, include_all: bool = False) -> list[CloudAccount]:
         return [
             CloudAccount(
                 cloud="azure", account_id=_SUB, name="Demo subscription", has_ai_resources=True
             )
         ]
+
+    async def check_access(self, account_id: str) -> bool:
+        return True
 
     async def list_deployments(self, account_id: str) -> list[Deployment]:
         return [
@@ -67,12 +76,15 @@ class FakeConnector:
                 model=model,
                 model_version=version,
                 sku="GlobalStandard",
+                region="eastus",
                 tags={"team": team},
             )
             for name, acct, model, version, *_rest, team in _DEPLOYMENTS
         ]
 
     async def pull_cost(self, account_id: str, start: date, end: date) -> list[CostRecord]:
+        # Like real billing, today isn't billed yet: it shows as an estimate until tomorrow.
+        end = min(end, self._today() - timedelta(days=1))
         records: list[CostRecord] = []
         day = start
         while day <= end:
@@ -130,3 +142,19 @@ def _day_factor(day: date, seed: str) -> Decimal:
     wobble = ((day.toordinal() * 7919 + sum(map(ord, seed))) % 600) / 1000
     weekend = Decimal("0.5") if day.weekday() >= 5 else Decimal(1)
     return (Decimal("0.7") + Decimal(str(wobble))) * weekend
+
+
+def demo_price_points() -> list[dict]:
+    """Per-1M-token list prices matching the demo meters, for ``pricing.demo``."""
+    points = []
+    for _name, _acct, model, version, _tin, _tout, pin, pout, _team in _DEPLOYMENTS:
+        for direction, short, price in (("input", "Inp", pin), ("output", "Outp", pout)):
+            points.append(
+                {
+                    "sku_meter": f"{model}-{version[5:].replace('-', '')} {short} glbl",
+                    "unit_price": Decimal(price),
+                    "ai_model": model,
+                    "ai_direction": direction,
+                }
+            )
+    return points

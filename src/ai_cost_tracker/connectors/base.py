@@ -9,8 +9,21 @@ class Connector(Protocol):
 
     name: str
 
-    async def list_accounts(self) -> list[CloudAccount]:
-        """Accounts (subscriptions / projects) visible to the connector's identity."""
+    async def list_accounts(self, include_all: bool = False) -> list[CloudAccount]:
+        """Accounts (subscriptions / projects) the connector should ingest.
+
+        ``include_all=True`` ignores any configured account filter and returns every account
+        the identity can see, each flagged with ``has_ai_resources``, so daily discovery can
+        spot accounts nobody has chosen to track yet.
+        """
+        ...
+
+    async def check_access(self, account_id: str) -> bool:
+        """Whether the connector's identity can read ``account_id`` right now.
+
+        False when the cloud says forbidden / not found (role not granted yet, or removed);
+        any other failure raises, so a transient outage never flips an account's status.
+        """
         ...
 
     async def list_deployments(self, account_id: str) -> list[Deployment]: ...

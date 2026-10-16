@@ -55,3 +55,16 @@ async def test_cost_matches_tokens_times_price() -> None:
         assert abs(rec.consumed_quantity * 1_000_000 - expected_tokens) <= 24
         expected_cost = Decimal(expected_tokens) * price / 1_000_000
         assert abs(rec.billed_cost - expected_cost) <= Decimal(24) * price / 1_000_000
+
+
+async def test_today_is_not_billed_yet():
+    from datetime import date
+
+    from ai_cost_tracker.connectors.fake import FakeConnector
+
+    fake = FakeConnector(today=date(2026, 10, 15))
+    days = {
+        r.charge_period_start
+        for r in await fake.pull_cost("sub", date(2026, 10, 13), date(2026, 10, 15))
+    }
+    assert days == {date(2026, 10, 13), date(2026, 10, 14)}

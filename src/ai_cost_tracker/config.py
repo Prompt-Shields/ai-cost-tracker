@@ -32,6 +32,11 @@ class Settings(BaseSettings):
     # Subscriptions to track with the Azure connector. Empty means every visible
     # subscription that contains AI resources.
     azure_subscription_ids: list[str] = []
+    # Object (principal) ID of the app's managed identity: the identity that is granted
+    # Reader on each subscription during "Connect Azure" (ARCHITECTURE.md §4.3).
+    azure_principal_id: str = ""
+    # Public URL of the web app, used to build the shareable "grant access" link.
+    web_base_url: str = "http://localhost:3000"
 
     # The single internal tenant every row belongs to in v1 (see ARCHITECTURE.md §2a).
     default_tenant_slug: str = "internal"

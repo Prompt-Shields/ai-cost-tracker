@@ -33,6 +33,7 @@ class Deployment(BaseModel):
     model_version: str | None = None
     sku: str | None = None
     capacity: int | None = None
+    region: str | None = None
     tags: dict[str, str] = Field(default_factory=dict)
 
 

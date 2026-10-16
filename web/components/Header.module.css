@@ -1,21 +1,65 @@
 .header {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-areas: "brand nav user";
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 12px 16px;
+  gap: 8px 16px;
+  padding: 10px 16px;
   background: var(--surface-1);
   border-bottom: 1px solid var(--border);
 }
 
 .brand {
+  grid-area: brand;
   font-weight: 600;
   white-space: nowrap;
+  color: var(--text-primary);
+  text-decoration: none;
+}
+
+.nav {
+  grid-area: nav;
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.navLink,
+.navActive {
+  font-size: 14px;
+  white-space: nowrap;
+  text-decoration: none;
+  padding: 6px 10px;
+  border-radius: 8px;
+  color: var(--text-secondary);
+}
+
+.navLink:hover {
+  background: var(--wash);
+  color: var(--text-primary);
+}
+
+.navActive {
+  color: var(--text-primary);
+  font-weight: 600;
+  background: var(--wash);
+}
+
+.navLink:focus-visible,
+.navActive:focus-visible,
+.brand:focus-visible,
+.signOut:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .user {
+  grid-area: user;
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 12px;
   min-width: 0;
 }
@@ -25,19 +69,48 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  max-width: 220px;
 }
 
 .signOut {
   font: inherit;
+  font-size: 14px;
   color: var(--text-primary);
   background: transparent;
   border: 1px solid var(--border-strong);
   border-radius: 8px;
-  padding: 6px 12px;
+  padding: 5px 12px;
   cursor: pointer;
   white-space: nowrap;
 }
 
 .signOut:hover {
   background: var(--wash);
+}
+
+/* Phone: brand + account on the first row, the nav scrolls sideways on its own row. */
+@media (max-width: 760px) {
+  .header {
+    grid-template-columns: auto 1fr;
+    grid-template-areas:
+      "brand user"
+      "nav nav";
+    padding-bottom: 6px;
+  }
+
+  /* Wrap rather than scroll: four links must all stay visible without a hidden overflow. */
+  .nav {
+    flex-wrap: wrap;
+    overflow: visible;
+    margin: 0 -6px;
+  }
+
+  .navLink,
+  .navActive {
+    padding: 5px 8px;
+  }
+
+  .name {
+    max-width: 140px;
+  }
 }

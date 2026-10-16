@@ -6,13 +6,18 @@
       "id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-ai/providers/Microsoft.CognitiveServices/accounts/aoai-eastus",
       "name": "aoai-eastus",
       "kind": "OpenAI",
-      "tags": {"team": "search", "env": "prod"}
+      "tags": {
+        "team": "search",
+        "env": "prod"
+      },
+      "location": "eastus"
     },
     {
       "id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-ai/providers/Microsoft.CognitiveServices/accounts/foundry-swc",
       "name": "foundry-swc",
       "kind": "AIServices",
-      "tags": null
+      "tags": null,
+      "location": "swedencentral"
     }
   ],
   "facets": [],

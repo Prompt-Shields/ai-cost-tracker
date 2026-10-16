@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from ai_cost_tracker.api.app import create_app
 from ai_cost_tracker.api.auth import Principal, get_principal
+from ai_cost_tracker.api.deps import get_today
 from ai_cost_tracker.config import Settings, get_settings
 from ai_cost_tracker.db.models import (
     CloudAccountRow,
@@ -41,6 +42,7 @@ def app(engine):
     app.dependency_overrides[get_session] = session_override
     app.dependency_overrides[get_settings] = _settings
     app.dependency_overrides[get_principal] = lambda: PRINCIPAL
+    app.dependency_overrides[get_today] = lambda: date(2026, 10, 2)
     return app
 
 
@@ -204,19 +206,35 @@ async def test_accounts(client, seeded):
 
 async def test_deployments_excludes_deleted(client, seeded):
     resp = await client.get("/api/v1/deployments")
-    assert resp.json() == [
+    body = resp.json()
+    assert len(body) == 1
+    uuid.UUID(body[0].pop("id"))
+    assert body == [
         {
             "cloud": "azure",
             "account_id": "sub-1",
+            "account_name": "Prod",
             "resource_id": "/sub/rg/openai-1",
             "name": "chat",
             "model": "gpt-4o",
             "model_version": "2024-08-06",
             "sku": "GlobalStandard",
             "capacity": 100,
+            "region": None,
             "tags": {"team": "search"},
         }
     ]
+
+
+def _daily(day: str, model: str, billed: str) -> dict:
+    return {
+        "day": day,
+        "key": model,
+        "model": model,
+        "billed_cost": billed,
+        "estimated_cost": "0.0000000000",
+        "day_status": "billed",
+    }
 
 
 async def test_costs_daily(client, seeded):
@@ -224,10 +242,10 @@ async def test_costs_daily(client, seeded):
     assert resp.json() == {
         "currency": "USD",
         "rows": [
-            {"day": "2026-10-01", "model": "gpt-4o", "billed_cost": "3.7500000000"},
-            {"day": "2026-10-01", "model": "gpt-4o-mini", "billed_cost": "0.1000000000"},
-            {"day": "2026-10-02", "model": "gpt-4o", "billed_cost": "3.0000000000"},
-            {"day": "2026-10-02", "model": "unmapped", "billed_cost": "0.0500000000"},
+            _daily("2026-10-01", "gpt-4o", "3.7500000000"),
+            _daily("2026-10-01", "gpt-4o-mini", "0.1000000000"),
+            _daily("2026-10-02", "gpt-4o", "3.0000000000"),
+            _daily("2026-10-02", "unmapped", "0.0500000000"),
         ],
     }
 
@@ -261,28 +279,40 @@ async def test_summary(client, seeded):
     assert resp.json() == {
         "currency": "USD",
         "total_cost": "6.9000000000",
+        "today_estimated_cost": "0.0000000000",
+        "month_to_date_cost": "6.9000000000",
         "by_model": [
             {
                 "model": "gpt-4o",
                 "billed_cost": "6.7500000000",
+                "estimated_cost": "0.0000000000",
                 "input_tokens": 501000,
                 "output_tokens": 1000,
                 # 6.75 / 502000 * 1e6
                 "cost_per_1m_tokens": "13.4462",
+                # These cost lines carry no direction, so nothing counts as input/output.
+                "cost_per_1m_input": "0.0000",
+                "cost_per_1m_output": "0.0000",
             },
             {
                 "model": "gpt-4o-mini",
                 "billed_cost": "0.1000000000",
+                "estimated_cost": "0.0000000000",
                 "input_tokens": 0,
                 "output_tokens": 0,
                 "cost_per_1m_tokens": None,
+                "cost_per_1m_input": None,
+                "cost_per_1m_output": None,
             },
             {
                 "model": "unmapped",
                 "billed_cost": "0.0500000000",
+                "estimated_cost": "0.0000000000",
                 "input_tokens": 0,
                 "output_tokens": 0,
                 "cost_per_1m_tokens": None,
+                "cost_per_1m_input": None,
+                "cost_per_1m_output": None,
             },
         ],
     }
@@ -298,6 +328,8 @@ async def test_missing_tenant_returns_empty(client):
     assert (await client.get("/api/v1/summary", params=RANGE)).json() == {
         "currency": "USD",
         "total_cost": "0.0000000000",
+        "today_estimated_cost": "0.0000000000",
+        "month_to_date_cost": "0.0000000000",
         "by_model": [],
     }
 

@@ -23,6 +23,8 @@
   --series-6: #008300;
   --series-7: #6250d6;
   --series-other: #898781;
+  /* Fill opacity for estimated (not yet billed) cost; dark needs more to stay visible. */
+  --estimated-opacity: 0.4;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -49,6 +51,7 @@
     --series-6: #008300;
     --series-7: #9085e9;
     --series-other: #6f6e69;
+    --estimated-opacity: 0.55;
   }
 }
 
@@ -75,6 +78,7 @@
   --series-6: #008300;
   --series-7: #9085e9;
   --series-other: #6f6e69;
+  --estimated-opacity: 0.55;
 }
 
 *,

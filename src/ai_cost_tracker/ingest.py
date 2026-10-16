@@ -4,6 +4,9 @@ Every function pulls from the connector first and only then opens the write, so 
 APIs never hold a transaction open. Cost and usage use replace semantics: delete the rows for
 the account and range, then insert what the connector returned, in one transaction. A re-run
 therefore leaves identical rows, and late billing corrections overwrite stale figures.
+
+Cost meters the parser doesn't recognise are queued in ``UnmappedMeter`` for an admin rather
+than dropped; the queue is recomputed from the stored cost lines, so it is idempotent too.
 """
 
 import logging
@@ -13,7 +16,8 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import delete, insert, select
+from sqlalchemy import delete, func, insert, select, tuple_
+from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,9 +29,12 @@ from ai_cost_tracker.db.models import (
     DeploymentRow,
     Tenant,
     TokenUsageRow,
+    UnmappedMeter,
 )
 
 logger = logging.getLogger(__name__)
+
+_MONEY_PLACES = Decimal("0.0000000001")  # Numeric(20, 10) in db/models.py
 
 
 async def get_or_create_tenant(
@@ -80,6 +87,8 @@ async def sync_inventory(
                     tenant_id=tenant_id, cloud=account.cloud, account_id=account.account_id
                 )
                 session.add(row)
+            # tracked / access_status / discovered_at belong to onboarding and the admin;
+            # inventory never touches them, and new rows keep the model defaults.
             row.name = account.name
             row.has_ai_resources = account.has_ai_resources or bool(deployments)
             row.last_synced_at = now
@@ -112,6 +121,7 @@ async def sync_inventory(
                 dep_row.model_version = dep.model_version
                 dep_row.sku = dep.sku
                 dep_row.capacity = dep.capacity
+                dep_row.region = dep.region
                 dep_row.tags = dict(dep.tags)
                 dep_row.deleted_at = None
             for key, dep_row in existing.items():
@@ -137,15 +147,31 @@ async def ingest_cost(
     rows = [_cost_row(tenant_id, r) for r in _merge_cost(records)]
 
     clouds = await _account_clouds(session, tenant_id, account_id, (r["cloud"] for r in rows))
-    stmt = delete(CostLine).where(
+    where = [
         CostLine.tenant_id == tenant_id,
         CostLine.sub_account_id == account_id,
         CostLine.charge_period_start >= start,
         CostLine.charge_period_start <= end,
-    )
+    ]
     if clouds:
-        stmt = stmt.where(CostLine.cloud.in_(clouds))
-    return await _replace(session, stmt, CostLine, rows)
+        where.append(CostLine.cloud.in_(clouds))
+    try:
+        # Unmapped meters whose lines we are about to delete may vanish from the queue.
+        stale = await session.execute(
+            select(CostLine.cloud, CostLine.sku_meter)
+            .where(*where, CostLine.ai_model.is_(None))
+            .distinct()
+        )
+        touched = {(c, m) for c, m in stale} | {(r["cloud"], r["sku_meter"]) for r in rows}
+        await session.execute(delete(CostLine).where(*where))
+        if rows:
+            await session.execute(insert(CostLine), rows)
+        await _sync_unmapped(session, tenant_id, touched)
+        await session.commit()
+    except BaseException:
+        await session.rollback()
+        raise
+    return len(rows)
 
 
 async def ingest_usage(
@@ -192,6 +218,91 @@ async def _replace(
         await session.rollback()
         raise
     return len(rows)
+
+
+async def _sync_unmapped(
+    session: AsyncSession, tenant_id: uuid.UUID, meters: set[tuple[str, str]]
+) -> None:
+    """Bring the unmapped-meter queue in line with the stored cost lines for ``meters``.
+
+    Totals are recomputed from all of the meter's cost lines (not added to), so re-ingesting a
+    range leaves the queue unchanged. Meters that now parse, or have no lines left, leave it.
+    """
+    parse = _meter_parser()
+    if parse is None or not meters:
+        return  # Without a parser every meter would look unmapped; don't flood the queue.
+    unmapped = sorted(k for k in meters if parse(k[1]) is None)
+    if mapped := sorted(k for k in meters if parse(k[1]) is not None):
+        await _delete_unmapped(session, tenant_id, mapped)
+    if not unmapped:
+        return
+
+    stats = await session.execute(
+        select(
+            CostLine.cloud,
+            CostLine.sku_meter,
+            CostLine.billing_currency,
+            func.min(CostLine.charge_period_start),
+            func.max(CostLine.charge_period_start),
+            func.sum(CostLine.billed_cost),
+            func.count(),
+        )
+        .where(
+            CostLine.tenant_id == tenant_id,
+            tuple_(CostLine.cloud, CostLine.sku_meter).in_(unmapped),
+        )
+        .group_by(CostLine.cloud, CostLine.sku_meter, CostLine.billing_currency)
+    )
+    best: dict[tuple[str, str], tuple[int, dict[str, Any]]] = {}
+    for cloud, meter, currency, first, last, total, count in stats:
+        # SQLite's SUM may come back as a float; go through str() and fix the scale.
+        total = Decimal(str(total or 0)).quantize(_MONEY_PLACES)
+        prev = best.get((cloud, meter))
+        # One row per meter: if it is billed in several currencies (rare), keep the one with
+        # the most lines rather than adding amounts in different currencies.
+        if prev is None or (count, total) > (prev[0], prev[1]["total_cost"]):
+            row = {
+                "tenant_id": tenant_id,
+                "cloud": cloud,
+                "sku_meter": meter,
+                "first_seen": first,
+                "last_seen": last,
+                "total_cost": total,
+                "currency": currency,
+            }
+            best[(cloud, meter)] = (count, row)
+    if gone := [k for k in unmapped if k not in best]:
+        await _delete_unmapped(session, tenant_id, gone)
+    if best:
+        await _upsert_unmapped(session, [row for _, row in best.values()])
+
+
+async def _delete_unmapped(
+    session: AsyncSession, tenant_id: uuid.UUID, meters: list[tuple[str, str]]
+) -> None:
+    await session.execute(
+        delete(UnmappedMeter).where(
+            UnmappedMeter.tenant_id == tenant_id,
+            tuple_(UnmappedMeter.cloud, UnmappedMeter.sku_meter).in_(meters),
+        )
+    )
+
+
+async def _upsert_unmapped(session: AsyncSession, values: list[dict[str, Any]]) -> None:
+    """Insert-or-update on the unique key, so two accounts' ingests can't race on a meter."""
+    dialect = (await session.connection()).dialect.name
+    if dialect not in ("postgresql", "sqlite"):
+        raise NotImplementedError(f"unmapped-meter upsert not supported on {dialect}")
+    module = postgresql if dialect == "postgresql" else sqlite
+    stmt = module.insert(UnmappedMeter).values(values)
+    stmt = stmt.on_conflict_do_update(
+        index_elements=["tenant_id", "cloud", "sku_meter"],
+        set_={
+            c: getattr(stmt.excluded, c)
+            for c in ("first_seen", "last_seen", "total_cost", "currency")
+        },
+    )
+    await session.execute(stmt)
 
 
 async def _account_clouds(
@@ -282,11 +393,19 @@ def _usage_row(tenant_id: uuid.UUID, u: TokenUsage) -> dict[str, Any]:
     }
 
 
-def _parse(meter: str) -> tuple[str | None, str | None]:
-    """(model, direction) for a meter, or (None, None) when unmapped or no parser exists yet."""
+def _meter_parser() -> Any:
+    """The current ``parse_meter``, looked up per call so rule changes and test patches apply."""
     try:
         from ai_cost_tracker.normalise.azure_meters import parse_meter
     except ImportError:
+        return None
+    return parse_meter
+
+
+def _parse(meter: str) -> tuple[str | None, str | None]:
+    """(model, direction) for a meter, or (None, None) when unmapped or no parser exists yet."""
+    parse_meter = _meter_parser()
+    if parse_meter is None:
         return None, None
     info = parse_meter(meter)
     if info is None:
