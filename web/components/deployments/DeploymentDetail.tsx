@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { lastNDays, shownCost, type Deployment, type DeploymentDailyRow } from "@/lib/api";
 import { formatCount, formatDay, formatMoney } from "@/lib/format";
 import { useSession } from "../AuthProvider";
+import { ExportButton } from "../ExportButton";
 import { DailyCostChart } from "../DailyCostChart";
 import { RateChart, type RatePoint } from "../RateChart";
 import { TokensChart, type TokenPoint } from "../TokensChart";
@@ -56,7 +57,20 @@ export function DeploymentDetail({ id }: { id: string }) {
             </p>
           )}
         </div>
-        <Segmented label="Date range" options={RANGE_OPTIONS} value={days} onChange={setDays} />
+        <div className={styles.controls}>
+          <Segmented label="Date range" options={RANGE_OPTIONS} value={days} onChange={setDays} />
+          {state.status === "ready" && (
+            <ExportButton
+              name="costs-daily"
+              query={{
+                ...range,
+                group_by: "deployment",
+                account_id: state.data.deployment.account_id,
+                deployment_id: id,
+              }}
+            />
+          )}
+        </div>
       </div>
 
       {state.status === "loading" && (

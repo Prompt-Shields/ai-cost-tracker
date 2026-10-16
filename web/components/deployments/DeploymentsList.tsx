@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import type { Deployment } from "@/lib/api";
 import { useSession } from "../AuthProvider";
+import { ExportButton } from "../ExportButton";
 import { EmptyNotice, ErrorNotice, Skeleton, ui as styles, useLoad } from "../ui";
 import { TagChips } from "./TagChips";
 
@@ -37,7 +38,7 @@ export function DeploymentsList() {
       <div className={styles.toolbar}>
         <h1 className={styles.title}>Deployments</h1>
         {state.status === "ready" && state.data.length > 0 && (
-          <>
+          <div className={styles.controls}>
             <label className={styles.srOnly} htmlFor="dep-filter">
               Filter deployments
             </label>
@@ -50,7 +51,8 @@ export function DeploymentsList() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
-          </>
+            <ExportButton name="deployments" />
+          </div>
         )}
       </div>
 

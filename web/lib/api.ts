@@ -217,3 +217,56 @@ export function isoDay(d: Date): string {
 export function shownCost(row: { billed_cost: string; estimated_cost: string; day_status: DayStatus }): number {
   return Number(row.day_status === "estimated" ? row.estimated_cost : row.billed_cost);
 }
+
+/** Filename from a Content-Disposition header, falling back to `fallback`. */
+function attachmentName(header: string | null, fallback: string): string {
+  const m = header?.match(/filename\*?=(?:UTF-8'')?"?([^";]+)"?/i);
+  return m ? decodeURIComponent(m[1]) : fallback;
+}
+
+/**
+ * Downloads a file endpoint (e.g. /api/v1/exports/summary.csv) and saves it. A plain link
+ * can't carry the bearer token, so this fetches the body as a blob and clicks an object URL.
+ */
+export async function downloadFile(
+  path: string,
+  { getToken, query, filename }: { getToken?: TokenGetter; query?: Query; filename?: string } = {},
+): Promise<void> {
+  const url = new URL(API_BASE_URL + path);
+  for (const [k, v] of Object.entries(query ?? {})) {
+    if (v !== undefined && v !== null && v !== "") url.searchParams.set(k, String(v));
+  }
+  const headers = new Headers({ Accept: "text/csv, */*" });
+  const token = getToken ? await getToken() : null;
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  let res: Response;
+  try {
+    res = await fetch(url, { headers });
+  } catch {
+    throw new ApiError(0, `Could not reach the API at ${API_BASE_URL}.`);
+  }
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      const data = (await res.json()) as { detail?: unknown };
+      if (typeof data.detail === "string") detail = data.detail;
+    } catch {
+      // Non-JSON error body; keep the status text.
+    }
+    throw new ApiError(res.status, `${res.status} ${detail}`.trim());
+  }
+  const blob = await res.blob();
+  const name = attachmentName(
+    res.headers.get("Content-Disposition"),
+    filename ?? path.split("/").pop() ?? "export.csv",
+  );
+  const href = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = href;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  // Give the browser a moment to start the download before releasing the blob.
+  setTimeout(() => URL.revokeObjectURL(href), 1000);
+}
