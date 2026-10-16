@@ -65,7 +65,10 @@ async def test_sync_follows_pages_and_parses(session):
     cached = prices[("o3-mini-0131-cchd-Inp-glbl Tokens", "swedencentral")][0]
     assert cached.ai_direction == "cached_input"
     ptu = prices[("Provisioned Managed Global Unit", "eastus2")][0]
-    assert ptu.tokens_per_unit is None and ptu.ai_model is None
+    # PTU is priced per hour, not per token: mapped to the synthetic PTU model, never used
+    # for token estimates.
+    assert ptu.tokens_per_unit is None
+    assert (ptu.ai_model, ptu.ai_direction) == ("provisioned-throughput", "provisioned")
 
 
 async def test_sync_is_idempotent(session):
