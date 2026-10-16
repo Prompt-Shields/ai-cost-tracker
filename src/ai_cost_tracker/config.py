@@ -38,6 +38,15 @@ class Settings(BaseSettings):
     # Public URL of the web app, used to build the shareable "grant access" link.
     web_base_url: str = "http://localhost:3000"
 
+    # Email notifications (issue #30). Leave smtp_host empty to disable email channels.
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    # From the environment / Key Vault reference only; never in code or committed config.
+    smtp_password: str = ""
+    smtp_from: str = "ai-cost-tracker@localhost"
+    smtp_starttls: bool = True
+
     # The single internal tenant every row belongs to in v1 (see ARCHITECTURE.md §2a).
     default_tenant_slug: str = "internal"
 

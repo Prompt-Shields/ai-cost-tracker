@@ -9,12 +9,21 @@ from fastapi.middleware.cors import CORSMiddleware
 from ai_cost_tracker.api.auth import check_auth_settings
 from ai_cost_tracker.api.routes import (
     admin,
+    alerts,
+    allocation,
+    api_keys,
+    audit_log,
     azure_connect,
+    budgets,
     connections,
     costs,
+    exports,
     health,
     inventory,
+    invoices,
     me,
+    notifications,
+    ptu,
 )
 from ai_cost_tracker.config import Settings, get_settings
 
@@ -43,7 +52,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.add_middleware(
             CORSMiddleware,
             allow_origins=origins,
-            allow_methods=["GET", "POST"],
+            allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
             allow_headers=["Authorization", "Content-Type", "X-Azure-Management-Token"],
         )
 
@@ -53,6 +62,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(azure_connect.router, prefix=API_PREFIX)
     app.include_router(connections.router, prefix=API_PREFIX)
     app.include_router(admin.router, prefix=API_PREFIX)
+    for module in (
+        alerts,
+        allocation,
+        api_keys,
+        audit_log,
+        budgets,
+        exports,
+        invoices,
+        notifications,
+        ptu,
+    ):
+        app.include_router(module.router, prefix=API_PREFIX)
     return app
 
 
