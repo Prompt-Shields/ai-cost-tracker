@@ -297,3 +297,30 @@ async def test_access_check_starts_backfill_for_newly_connected(factory, setting
 
     result = await jobs.run_access_check(factory, FakeConnector(), settings, enqueue=enqueue)
     assert result == calls == ["sub-1", "sub-2"]
+
+
+async def test_m2_jobs_run_and_are_scheduled(engine, tenant_id, monkeypatch):
+    """Every M2 job resolves to a real function, runs on an empty DB, and has a cron entry."""
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    from ai_cost_tracker.config import Settings
+    from ai_cost_tracker.worker import jobs
+    from ai_cost_tracker.worker.settings import M2_JOBS, WorkerSettings
+
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    settings = Settings(connector="fake", default_tenant_slug="internal", environment="test")
+    for name in jobs._M2_JOBS:
+        assert await jobs.run_m2(name, factory, settings) is not None, name
+    scheduled = {c.coroutine for c in WorkerSettings.cron_jobs}
+    assert all(job in scheduled for job in M2_JOBS)
+
+
+async def test_m2_job_failure_is_logged_not_raised(engine, monkeypatch):
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    from ai_cost_tracker.config import Settings
+    from ai_cost_tracker.worker import jobs
+
+    monkeypatch.setitem(jobs._M2_JOBS, "broken", ("ai_cost_tracker.does_not_exist", "run"))
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    assert await jobs.run_m2("broken", factory, Settings(environment="test")) is None
