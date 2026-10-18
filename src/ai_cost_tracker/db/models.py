@@ -61,6 +61,8 @@ class CloudAccountRow(Base):
         String(32), default="connected", server_default="connected"
     )
     discovered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Day of month (1-28) the pay-as-you-go invoice period starts; null = calendar month.
+    billing_period_day: Mapped[int | None] = mapped_column(Integer)
 
 
 class DeploymentRow(Base):
@@ -262,3 +264,166 @@ class AlertEvent(Base):
     details: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # info | warning | critical
+    severity: Mapped[str] = mapped_column(String(16), default="warning", server_default="warning")
+    # Set once the notifier has handled this event (sent, or nothing to send it to).
+    notified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class Budget(Base):
+    """A monthly spend budget on a scope (§13 M2, issue #29)."""
+
+    __tablename__ = "budget"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=_uuid)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenant.id"), index=True)
+    name: Mapped[str] = mapped_column(String(200))
+    # all | account | model | deployment | tag   (tag scope_value is "key:value")
+    scope_type: Mapped[str] = mapped_column(String(16))
+    scope_value: Mapped[str | None] = mapped_column(String(512))
+    amount: Mapped[Decimal] = mapped_column(Money)
+    currency: Mapped[str] = mapped_column(String(3), default="USD")
+    # Fractions of amount that raise an alert, e.g. [0.8, 1.0].
+    thresholds: Mapped[list] = mapped_column(JSON, default=lambda: [0.8, 1.0])
+    active: Mapped[bool] = mapped_column(default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class NotificationChannel(Base):
+    """Where alerts go: email, Slack, Teams or a webhook (issue #30).
+
+    ``target`` is an email address or a webhook URL. Webhook URLs embed a token, so the API
+    never returns them in full.
+    """
+
+    __tablename__ = "notification_channel"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=_uuid)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenant.id"), index=True)
+    name: Mapped[str] = mapped_column(String(200))
+    # email | slack | teams | webhook
+    kind: Mapped[str] = mapped_column(String(16))
+    target: Mapped[str] = mapped_column(String(2000))
+    # HMAC secret for generic webhooks (signature header); null for other kinds.
+    signing_secret: Mapped[str | None] = mapped_column(String(200))
+    # Alert kinds routed here; empty list = all kinds.
+    alert_kinds: Mapped[list] = mapped_column(JSON, default=list)
+    min_severity: Mapped[str] = mapped_column(String(16), default="warning")
+    # Send a daily digest instead of one message per alert.
+    digest: Mapped[bool] = mapped_column(default=False)
+    active: Mapped[bool] = mapped_column(default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class NotificationDelivery(Base):
+    """One attempt to send one alert (or digest) to one channel."""
+
+    __tablename__ = "notification_delivery"
+
+    id: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenant.id"), index=True)
+    channel_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("notification_channel.id"))
+    # Null for a digest delivery.
+    alert_event_id: Mapped[int | None] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"), ForeignKey("alert_event.id")
+    )
+    # sent | failed
+    status: Mapped[str] = mapped_column(String(16))
+    error: Mapped[str | None] = mapped_column(String(2000))
+    attempted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class PtuUtilization(Base):
+    """Hourly utilisation (0..1) of a provisioned (PTU) deployment (issue #32)."""
+
+    __tablename__ = "ptu_utilization"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "cloud", "resource_id", "deployment", "bucket_start"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenant.id"), index=True)
+    cloud: Mapped[str] = mapped_column(String(16))
+    account_id: Mapped[str] = mapped_column(String(128))
+    resource_id: Mapped[str] = mapped_column(String(512))
+    deployment: Mapped[str] = mapped_column(String(200))
+    bucket_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    utilization: Mapped[Decimal] = mapped_column(Numeric(7, 4))
+
+
+class AllocationRule(Base):
+    """Maps deployments to a cost centre / team / app by tag, name pattern or account (#33).
+
+    Rules are evaluated by ascending priority; the first match wins.
+    """
+
+    __tablename__ = "allocation_rule"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=_uuid)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenant.id"), index=True)
+    name: Mapped[str] = mapped_column(String(200))
+    priority: Mapped[int] = mapped_column(Integer, default=100)
+    # tag | name_pattern | account
+    match_type: Mapped[str] = mapped_column(String(16))
+    # Tag key for "tag"; unused otherwise.
+    match_key: Mapped[str | None] = mapped_column(String(200))
+    # Tag value, glob pattern on "<account resource>/<deployment>", or account id.
+    match_value: Mapped[str] = mapped_column(String(512))
+    cost_centre: Mapped[str | None] = mapped_column(String(200))
+    team: Mapped[str | None] = mapped_column(String(200))
+    app: Mapped[str | None] = mapped_column(String(200))
+    active: Mapped[bool] = mapped_column(default=True)
+
+
+class SplitRule(Base):
+    """Splits a shared deployment's cost by fixed percentages (#34).
+
+    ``allocations`` is ``[{"cost_centre": str | None, "team": str | None, "app": str | None,
+    "percent": number}]`` summing to 100.
+    """
+
+    __tablename__ = "split_rule"
+    __table_args__ = (UniqueConstraint("tenant_id", "resource_id", "deployment"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=_uuid)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenant.id"), index=True)
+    resource_id: Mapped[str] = mapped_column(String(512))
+    deployment: Mapped[str] = mapped_column(String(200))
+    allocations: Mapped[list] = mapped_column(JSON, default=list)
+    active: Mapped[bool] = mapped_column(default=True)
+
+
+class ApiKey(Base):
+    """Programmatic access (#35). Only a hash of the key is stored."""
+
+    __tablename__ = "api_key"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=_uuid)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenant.id"), index=True)
+    name: Mapped[str] = mapped_column(String(200))
+    # First characters of the key, shown in the UI to tell keys apart.
+    prefix: Mapped[str] = mapped_column(String(16), index=True)
+    key_hash: Mapped[str] = mapped_column(String(128), unique=True)
+    # App roles the key acts with, e.g. ["viewer"]; never "owner".
+    roles: Mapped[list] = mapped_column(JSON, default=lambda: ["viewer"])
+    created_by: Mapped[str] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class AuditLog(Base):
+    """Who changed what (#37). Written through ``ai_cost_tracker.audit.record``."""
+
+    __tablename__ = "audit_log"
+
+    id: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenant.id"), index=True)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    actor_id: Mapped[str] = mapped_column(String(200))
+    actor_name: Mapped[str | None] = mapped_column(String(200))
+    # e.g. "budget.create", "connection.track", "api_key.revoke", "export.csv", "login"
+    action: Mapped[str] = mapped_column(String(64), index=True)
+    target_type: Mapped[str | None] = mapped_column(String(64))
+    target_id: Mapped[str | None] = mapped_column(String(512))
+    details: Mapped[dict] = mapped_column(JSON, default=dict)

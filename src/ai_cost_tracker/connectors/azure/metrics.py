@@ -9,12 +9,18 @@ Unverified until the phase 0 spike (issue #2) lists ``metricDefinitions`` on a l
 - the per-request timespan limit. We send at most seven days per call to stay well inside
   documented limits and keep responses small;
 - the ``top`` cap. Splitting by a dimension returns only the top 10 series unless ``top`` is
-  raised, which would silently drop deployments on busy accounts.
+  raised, which would silently drop deployments on busy accounts;
+- the PTU utilisation metric (issue #32): name ``AzureOpenAIProvisionedManagedUtilizationV2``,
+  unit percent (0-100), split by ``ModelDeploymentName``, with ``Average`` and ``Maximum``
+  aggregations; and whether Monitor reports idle hours as 0 or leaves them out (we skip
+  points without an average, so a left-out hour counts as "no data", not as idle).
 """
 
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from typing import Any
 
+from ai_cost_tracker.connectors.base import PtuSample
 from ai_cost_tracker.core.models import Deployment, TokenUsage
 
 API_VERSION = "2023-10-01"
@@ -23,6 +29,8 @@ INPUT_METRIC = "ProcessedPromptTokens"
 OUTPUT_METRIC = "GeneratedTokens"
 REQUESTS_METRIC = "AzureOpenAIRequests"
 DEPLOYMENT_DIMENSION = "ModelDeploymentName"
+# Unverified (#2): provisioned-managed utilisation in percent, per deployment.
+PTU_UTILIZATION_METRIC = "AzureOpenAIProvisionedManagedUtilizationV2"
 
 MAX_SPAN = timedelta(days=7)
 MAX_SERIES = 1000
@@ -108,6 +116,60 @@ def parse_metrics(
                     )
                 setattr(usage, field, getattr(usage, field) + round(total))
     return sorted(buckets.values(), key=lambda u: (u.deployment, u.bucket_start))
+
+
+def ptu_request(resource_id: str, start: datetime, end: datetime) -> tuple[str, dict]:
+    """Path and query params for one hourly PTU utilisation call (average and peak)."""
+    return (
+        f"{resource_id}/providers/Microsoft.Insights/metrics",
+        {
+            "api-version": API_VERSION,
+            "metricnames": PTU_UTILIZATION_METRIC,
+            "timespan": f"{_iso(start)}/{_iso(end)}",
+            "interval": "PT1H",
+            "aggregation": "Average,Maximum",
+            "$filter": f"{DEPLOYMENT_DIMENSION} eq '*'",
+            "top": str(MAX_SERIES),
+        },
+    )
+
+
+def parse_ptu(resource_id: str, wanted: set[str], payload: dict[str, Any]) -> list[PtuSample]:
+    """One ``PtuSample`` per (deployment in ``wanted``, hour) that has an average.
+
+    Deployment names are matched case-insensitively and reported as spelled in ``wanted``,
+    so samples join the inventory even if Monitor changes the case. Percent becomes a 0..1
+    fraction, clamped: Monitor can report slightly over 100% when a deployment bursts.
+    """
+    names = {w.lower(): w for w in wanted}
+    samples: dict[tuple[str, datetime], PtuSample] = {}
+    for metric in payload.get("value") or []:
+        name = ((metric.get("name") or {}).get("value") or "").lower()
+        if name != PTU_UTILIZATION_METRIC.lower():
+            continue
+        for series in metric.get("timeseries") or []:
+            deployment = names.get((_dimension(series, DEPLOYMENT_DIMENSION) or "").lower())
+            if deployment is None:
+                continue
+            for point in series.get("data") or []:
+                avg = point.get("average")
+                if avg is None:
+                    continue
+                stamp = to_utc(datetime.fromisoformat(point["timeStamp"].replace("Z", "+00:00")))
+                peak = point.get("maximum")
+                samples[(deployment, stamp)] = PtuSample(
+                    resource_id=resource_id,
+                    deployment=deployment,
+                    bucket_start=stamp,
+                    utilization=_fraction(avg),
+                    max_utilization=_fraction(peak) if peak is not None else None,
+                )
+    return sorted(samples.values(), key=lambda s: (s.deployment, s.bucket_start))
+
+
+def _fraction(percent: float | int) -> Decimal:
+    value = Decimal(str(percent)) / 100
+    return min(Decimal(1), max(Decimal(0), value)).quantize(Decimal("0.0001"))
 
 
 def _dimension(series: dict[str, Any], name: str) -> str | None:

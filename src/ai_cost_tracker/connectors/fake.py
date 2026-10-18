@@ -3,6 +3,7 @@
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
+from ai_cost_tracker.connectors.base import PtuSample, is_provisioned
 from ai_cost_tracker.core.models import CloudAccount, CostRecord, Deployment, TokenUsage
 
 _SUB = "00000000-0000-0000-0000-00000000demo"
@@ -46,6 +47,56 @@ _DEPLOYMENTS = [
     ),
 ]
 
+# Provisioned (PTU) deployments, kept apart from the token-priced ones above so demo prices
+# and estimates are unchanged: (deployment, account, model, version, PTUs, sku,
+# $ per PTU-hour, team tag). PTU billing is per reserved hour whatever the traffic, so they
+# emit no token-priced cost and (for now) no token usage, only utilisation and hourly cost.
+_PTU_DEPLOYMENTS = [
+    (
+        "batch-ptu-gpt-4o",
+        "oai-batch",
+        "gpt-4o",
+        "2024-08-06",
+        50,
+        "ProvisionedManaged",
+        "1.00",
+        "batch",
+    ),
+]
+# Model-agnostic PTU meter. Assumption (#2): Azure bills PTUs on meters like this one that
+# name no model, so the meter parser leaves it unmapped and the PTU report matches it by the
+# word "Provisioned".
+PTU_METER = "Provisioned Managed Regional Unit"
+
+# Weekday utilisation by UTC hour, percent: idle overnight, busy in office hours.
+_WEEKDAY_CURVE = (
+    2,
+    2,
+    2,
+    2,
+    2,
+    3,
+    5,
+    15,
+    45,
+    70,
+    82,
+    88,
+    85,
+    80,
+    84,
+    86,
+    78,
+    60,
+    35,
+    15,
+    8,
+    5,
+    3,
+    2,
+)
+_WEEKEND_CURVE = (2, 2, 2, 2, 2, 2, 2, 3, 4, 6, 8, 9, 9, 8, 7, 6, 5, 4, 3, 3, 2, 2, 2, 2)
+
 
 class FakeConnector:
     name = "fake"
@@ -80,6 +131,20 @@ class FakeConnector:
                 tags={"team": team},
             )
             for name, acct, model, version, *_rest, team in _DEPLOYMENTS
+        ] + [
+            Deployment(
+                cloud="azure",
+                account_id=account_id,
+                resource_id=f"{_RG}/{acct}",
+                name=name,
+                model=model,
+                model_version=version,
+                sku=sku,
+                capacity=ptus,
+                region="eastus",
+                tags={"team": team},
+            )
+            for name, acct, model, version, ptus, sku, _price, team in _PTU_DEPLOYMENTS
         ]
 
     async def pull_cost(self, account_id: str, start: date, end: date) -> list[CostRecord]:
@@ -105,6 +170,21 @@ class FakeConnector:
                             billing_currency="USD",
                         )
                     )
+            for _name, acct, _model, _version, ptus, _sku, price, _team in _PTU_DEPLOYMENTS:
+                hours = Decimal(ptus * 24)
+                records.append(
+                    CostRecord(
+                        cloud="azure",
+                        sub_account_id=account_id,
+                        resource_id=f"{_RG}/{acct}",
+                        charge_period_start=day,
+                        service_name="Foundry Models",
+                        sku_meter=PTU_METER,
+                        consumed_quantity=hours,
+                        billed_cost=hours * Decimal(price),
+                        billing_currency="USD",
+                    )
+                )
             day += timedelta(days=1)
         return records
 
@@ -135,6 +215,36 @@ class FakeConnector:
                 )
             hour += timedelta(hours=1)
         return out
+
+    async def pull_ptu_utilization(
+        self, account_id: str, deployments: list[Deployment], start: datetime, end: datetime
+    ) -> list[PtuSample]:
+        known = {d[0] for d in _PTU_DEPLOYMENTS}
+        wanted = [d for d in deployments if is_provisioned(d.sku) and d.name in known]
+        out: list[PtuSample] = []
+        hour = start.astimezone(UTC).replace(minute=0, second=0, microsecond=0)
+        while hour < end:
+            for dep in wanted:
+                avg = _ptu_utilization(hour, dep.name)
+                out.append(
+                    PtuSample(
+                        resource_id=dep.resource_id,
+                        deployment=dep.name,
+                        bucket_start=hour,
+                        utilization=avg,
+                        max_utilization=min(Decimal(1), avg * Decimal("1.25")),
+                    )
+                )
+            hour += timedelta(hours=1)
+        return out
+
+
+def _ptu_utilization(hour: datetime, seed: str) -> Decimal:
+    """Repeatable hourly utilisation 0..1 following the office-hours curve, ±3 points."""
+    curve = _WEEKEND_CURVE if hour.weekday() >= 5 else _WEEKDAY_CURVE
+    wobble = (hour.toordinal() * 31 + hour.hour * 7 + sum(map(ord, seed))) % 7 - 3
+    percent = min(100, max(0, curve[hour.hour] + wobble))
+    return (Decimal(percent) / 100).quantize(Decimal("0.0001"))
 
 
 def _day_factor(day: date, seed: str) -> Decimal:

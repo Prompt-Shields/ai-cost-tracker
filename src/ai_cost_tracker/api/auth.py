@@ -3,6 +3,9 @@
 The API is a resource server: the web app signs users in with MSAL and sends the access token
 it got for our app registration. We validate it locally against the tenant's signing keys,
 then map Entra groups and app roles onto the app's four roles.
+
+Scripts can instead send an API key (``Authorization: Bearer act_...``, issue #35); it is
+looked up in the database on every request, so revoking it takes effect immediately.
 """
 
 import asyncio
@@ -13,8 +16,11 @@ import jwt
 from fastapi import Depends, HTTPException, Request, status
 from jwt import PyJWKClient
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from ai_cost_tracker import api_keys
 from ai_cost_tracker.config import Settings, get_settings
+from ai_cost_tracker.db.session import get_session
 
 Role = Literal["owner", "admin", "analyst", "viewer"]
 ROLES: frozenset[str] = frozenset(get_args(Role))
@@ -129,15 +135,45 @@ def _roles(claims: dict[str, Any], groups: set[str], settings: Settings) -> set[
     return roles  # type: ignore[return-value]
 
 
+API_KEY_OID_PREFIX = "apikey:"
+
+
+def is_api_key(principal: Principal) -> bool:
+    return principal.oid.startswith(API_KEY_OID_PREFIX)
+
+
+async def _api_key_principal(token: str, session: AsyncSession, settings: Settings) -> Principal:
+    row = await api_keys.authenticate(session, settings.default_tenant_slug, token)
+    if row is None:
+        raise _unauthorized("Invalid or revoked API key")
+    roles = {r for r in (row.roles or []) if r in api_keys.KEY_ROLES}
+    return Principal(
+        oid=f"{API_KEY_OID_PREFIX}{row.id}",
+        name=row.name,
+        groups=[],
+        roles=roles,  # type: ignore[arg-type]
+    )
+
+
 async def get_principal(
-    request: Request, settings: Annotated[Settings, Depends(get_settings)]
+    request: Request,
+    settings: Annotated[Settings, Depends(get_settings)],
+    session: Annotated[AsyncSession, Depends(get_session)],
 ) -> Principal:
-    """FastAPI dependency: the validated caller. 401 on a bad/missing token, 403 if not allowed."""
+    """FastAPI dependency: the validated caller. 401 on a bad/missing token, 403 if not allowed.
+
+    ``session`` is only used for API keys; it is the request's shared session (FastAPI caches
+    ``get_session`` per request), and opening it doesn't connect until a key is looked up.
+    """
     check_auth_settings(settings)
     if settings.auth_disabled:
         return DEV_PRINCIPAL.model_copy(deep=True)
 
-    claims = await _decode(_bearer_token(request), settings)
+    token = _bearer_token(request)
+    if api_keys.looks_like_key(token):
+        return await _api_key_principal(token, session, settings)
+
+    claims = await _decode(token, settings)
     groups = set(claims.get("groups", []))
     overage = "groups" in claims.get("_claim_names", {})
     roles = _roles(claims, groups, settings)

@@ -12,6 +12,7 @@ import { formatCount, formatDay, formatMoney } from "@/lib/format";
 import { useSession } from "./AuthProvider";
 import { DailyCostChart } from "./DailyCostChart";
 import { DiscoveryBanner } from "./DiscoveryBanner";
+import { ExportButton } from "./ExportButton";
 import { daysBetween, pivotGrouped } from "./dailySeries";
 import {
   EmptyNotice,
@@ -84,7 +85,7 @@ export function Overview() {
         deployments={deployments.status === "ready" ? deployments.data : []}
       />
 
-      {summary.status === "ready" && <ByModel summary={summary.data} />}
+      {summary.status === "ready" && <ByModel summary={summary.data} start={range.start} end={range.end} />}
     </main>
   );
 }
@@ -242,7 +243,7 @@ function DailyBody({
   return <DailyCostChart points={pivot.points} series={pivot.series} currency={data.currency || "USD"} />;
 }
 
-function ByModel({ summary }: { summary: Summary }) {
+function ByModel({ summary, start, end }: { summary: Summary; start: string; end: string }) {
   const currency = summary.currency || "USD";
   const models = [...summary.by_model].sort(
     (a, b) =>
@@ -252,7 +253,10 @@ function ByModel({ summary }: { summary: Summary }) {
   const rate = (v: string | null) => (v === null ? "—" : formatMoney(Number(v), currency));
   return (
     <section className={styles.panel}>
-      <h2 className={styles.panelTitle}>By model</h2>
+      <div className={styles.panelHead}>
+        <h2 className={styles.panelTitle}>By model</h2>
+        <ExportButton name="summary" query={{ start, end }} />
+      </div>
       <div className={styles.tableWrap}>
         <table className={styles.table}>
           <thead>

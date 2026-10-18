@@ -11,7 +11,7 @@ from decimal import Decimal
 
 import pytest
 
-from ai_cost_tracker.connectors.base import Connector
+from ai_cost_tracker.connectors.base import Connector, PtuSample, is_provisioned
 from ai_cost_tracker.core.models import CloudAccount, CostRecord, Deployment, TokenUsage
 
 
@@ -124,6 +124,34 @@ class ConnectorContract:
         assert {(r.resource_id, r.deployment) for r in rows} <= {
             (d.resource_id, d.name) for d in wanted
         }
+
+    async def test_pull_ptu_utilization(
+        self, connector: Connector, account_id: str, deployments: list[Deployment]
+    ) -> None:
+        """Only provisioned deployments, hourly buckets in range, utilisation as 0..1."""
+        rows = await connector.pull_ptu_utilization(
+            account_id, deployments, self.usage_start, self.usage_end
+        )
+        provisioned = {(d.resource_id, d.name) for d in deployments if is_provisioned(d.sku)}
+        if not provisioned:
+            assert rows == []
+        for row in rows:
+            assert isinstance(row, PtuSample)
+            assert (row.resource_id, row.deployment) in provisioned
+            b = row.bucket_start
+            assert b.tzinfo is not None and b.utcoffset() == timedelta(0)
+            assert (b.minute, b.second, b.microsecond) == (0, 0, 0), "buckets are hourly"
+            assert self.usage_start <= b < self.usage_end
+            assert isinstance(row.utilization, Decimal) and 0 <= row.utilization <= 1
+        keys = [(r.resource_id, r.deployment, r.bucket_start) for r in rows]
+        assert len(keys) == len(set(keys)), "one row per deployment and hour"
+        unprovisioned = [d for d in deployments if not is_provisioned(d.sku)]
+        assert (
+            await connector.pull_ptu_utilization(
+                account_id, unprovisioned, self.usage_start, self.usage_end
+            )
+            == []
+        )
 
     async def test_deterministic(
         self, connector: Connector, account_id: str, deployments: list[Deployment]

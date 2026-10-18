@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ai_cost_tracker import audit
 from ai_cost_tracker.api.auth import Principal, get_principal, require_role
 from ai_cost_tracker.api.deps import SessionDep, SettingsDep, TenantId
 from ai_cost_tracker.api.routes import connections
@@ -84,7 +85,7 @@ async def discover(
 @router.post("/azure/connect")
 async def connect(
     body: ConnectBody,
-    _: Admin,
+    admin: Admin,
     token: ArmToken,
     http: ArmHttp,
     session: SessionDep,
@@ -127,6 +128,21 @@ async def connect(
                 "share_url": share_url(settings, sub),
             }
         )
+    # Never the ARM token: only which subscriptions were connected and how it went.
+    audit.record(
+        session,
+        tenant_id,
+        admin,
+        "connection.connect",
+        target_type="azure_subscriptions",
+        target_id=",".join(r["subscription_id"] for r in results)[:512],
+        details={
+            "management_group_id": body.management_group_id,
+            "subscriptions": [
+                {"subscription_id": r["subscription_id"], "status": r["status"]} for r in results
+            ],
+        },
+    )
     await session.commit()
     for r in results:
         if r["status"] == "connected":

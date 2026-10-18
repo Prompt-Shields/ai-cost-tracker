@@ -9,9 +9,11 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
+from ai_cost_tracker import api_keys
 from ai_cost_tracker.api import auth
 from ai_cost_tracker.api.auth import Principal, get_principal, require_role
 from ai_cost_tracker.config import Settings, get_settings
+from ai_cost_tracker.db.session import get_session
 
 TENANT = "11111111-1111-1111-1111-111111111111"
 CLIENT = "22222222-2222-2222-2222-222222222222"
@@ -55,6 +57,8 @@ def make_client(settings: Settings) -> TestClient:
         return {"oid": principal.oid}
 
     app.dependency_overrides[get_settings] = lambda: settings
+    # JWTs never touch the database; API-key tests stub ``api_keys.authenticate``.
+    app.dependency_overrides[get_session] = lambda: None
     return TestClient(app, raise_server_exceptions=False)
 
 
@@ -196,3 +200,52 @@ def test_jwk_client_cached_per_tenant():
     assert auth._jwk_client("other") is not first
     assert first.uri == f"https://login.microsoftonline.com/{TENANT}/discovery/v2.0/keys"
     auth._jwk_clients.clear()
+
+
+class _KeyRow:
+    id = "k-1"
+    name = "ci"
+    roles = ["admin", "owner", "bogus"]  # "owner" is never honoured for a key
+
+
+@pytest.fixture
+def key_lookup(monkeypatch):
+    calls: list[str] = []
+
+    async def authenticate(session, tenant_slug, key, *, now=None):
+        calls.append(key)
+        return _KeyRow() if key == "act_good" else None
+
+    monkeypatch.setattr(api_keys, "authenticate", authenticate)
+    return calls
+
+
+def test_api_key_principal(key_lookup):
+    client = make_client(make_settings())
+    body = get(client, "/me", "act_good").json()
+    assert body == {
+        "oid": "apikey:k-1",
+        "name": "ci",
+        "email": None,
+        "groups": [],
+        "roles": ["admin"],
+    }
+    assert get(client, "/admin", "act_good").status_code == 200
+    assert key_lookup == ["act_good", "act_good"]
+
+
+def test_unknown_or_revoked_api_key_401(key_lookup):
+    resp = get(make_client(make_settings()), "/me", "act_revoked")
+    assert resp.status_code == 401
+    assert resp.headers["WWW-Authenticate"].startswith('Bearer error="invalid_token"')
+
+
+def test_jwt_path_never_looks_up_keys(key_lookup):
+    assert get(make_client(make_settings()), "/me", token()).status_code == 200
+    assert key_lookup == []
+
+
+def test_dev_bypass_ignores_keys(key_lookup):
+    client = make_client(make_settings(auth_disabled=True, environment="local"))
+    assert get(client, "/me", "act_revoked").json()["oid"] == "dev"
+    assert key_lookup == []

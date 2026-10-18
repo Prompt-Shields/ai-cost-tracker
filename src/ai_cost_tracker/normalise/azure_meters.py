@@ -21,6 +21,10 @@ _ISO_DATE = re.compile(r"(?<!\d)(\d{4})-(\d{2})-(\d{2})(?!\d)")
 _MMDD = re.compile(r"^(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])$")
 
 
+# Model name for PTU capacity meters that name no model (see parse_meter).
+PROVISIONED_MODEL = "provisioned-throughput"
+
+
 @dataclass(frozen=True)
 class MeterInfo:
     model: str  # e.g. "gpt-4o", "gpt-4o-mini", "o3-mini"
@@ -93,10 +97,20 @@ def parse_meter(meter: str, rules: _Rules | None = None) -> MeterInfo | None:
         model_tokens.append(tok)
     model = "-".join(model_tokens)
     model = rules.aliases.get(model, model)
+    token_set = set(tokens)
     if not model or not any(f.search(model) for f in rules.families):
+        # PTU meters bill reserved capacity, not a model ("Provisioned Managed Regional
+        # Unit"), so they get a synthetic model the cost API attributes to the provisioned
+        # deployments on the resource. Real PTU meter names unverified until #2.
+        if _first_match(rules.direction, token_set) == "provisioned":
+            return MeterInfo(
+                model=PROVISIONED_MODEL,
+                version=None,
+                direction="provisioned",
+                deployment_type=_first_match(rules.deployment, token_set) or "provisioned",
+            )
         return None
 
-    token_set = set(tokens)
     return MeterInfo(
         model=model,
         version=version,

@@ -13,7 +13,7 @@ import uuid
 from datetime import UTC, date, datetime
 from decimal import Decimal
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ai_cost_tracker.db.models import AlertEvent, CostLine, DailyEstimate, Reconciliation
@@ -149,6 +149,9 @@ async def _billed(
             CostLine.tenant_id == tenant_id,
             CostLine.charge_period_start >= start,
             CostLine.charge_period_start <= end,
+            # PTU capacity is billed per hour, not per token, so token estimates can't match
+            # it; comparing would raise a variance alert every day (see ptu.py instead).
+            or_(CostLine.ai_direction.is_(None), CostLine.ai_direction != "provisioned"),
         )
         .group_by(
             CostLine.cloud,

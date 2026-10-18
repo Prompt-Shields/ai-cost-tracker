@@ -1,0 +1,33 @@
+{
+  "cost": 119,
+  "timespan": "2026-10-12T00:00:00Z/2026-10-12T03:00:00Z",
+  "interval": "PT1H",
+  "value": [
+    {
+      "id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-ai/providers/Microsoft.CognitiveServices/accounts/aoai-eastus/providers/Microsoft.Insights/metrics/AzureOpenAIProvisionedManagedUtilizationV2",
+      "type": "Microsoft.Insights/metrics",
+      "name": {"value": "AzureOpenAIProvisionedManagedUtilizationV2", "localizedValue": "Provisioned-managed Utilization V2"},
+      "displayDescription": "Utilization % for a provisoned-managed deployment, calculated as (PTUs consumed / PTUs deployed) x 100.",
+      "unit": "Percent",
+      "timeseries": [
+        {
+          "metadatavalues": [{"name": {"value": "modeldeploymentname", "localizedValue": "modeldeploymentname"}, "value": "Batch-PTU"}],
+          "data": [
+            {"timeStamp": "2026-10-12T00:00:00Z", "average": 4.5, "maximum": 12.0},
+            {"timeStamp": "2026-10-12T01:00:00Z", "average": 62.25, "maximum": 104.0},
+            {"timeStamp": "2026-10-12T02:00:00Z"}
+          ]
+        },
+        {
+          "metadatavalues": [{"name": {"value": "modeldeploymentname", "localizedValue": "modeldeploymentname"}, "value": "search-chat-gpt4o"}],
+          "data": [
+            {"timeStamp": "2026-10-12T00:00:00Z", "average": 0.0, "maximum": 0.0}
+          ]
+        }
+      ],
+      "errorCode": "Success"
+    }
+  ],
+  "namespace": "Microsoft.CognitiveServices/accounts",
+  "resourceregion": "eastus"
+}

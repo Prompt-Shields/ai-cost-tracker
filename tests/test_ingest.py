@@ -90,7 +90,7 @@ async def test_fake_cost_ingest_is_idempotent(session, tenant_id):
     n1 = await ingest_cost(session, tenant_id, fake, account.account_id, D1, D7)
     first = await _cost_stats(session)
     n2 = await ingest_cost(session, tenant_id, fake, account.account_id, D1, D7)
-    assert n1 == n2 == 7 * 3 * 2
+    assert n1 == n2 == 7 * 3 * 2 + 7  # 3 token deployments x in/out, plus one PTU line a day
     assert await _cost_stats(session) == first
     assert first[0] == n1
 

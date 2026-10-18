@@ -4,7 +4,8 @@ from collections import defaultdict
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
-from ai_cost_tracker.connectors.fake import FakeConnector
+from ai_cost_tracker.connectors.base import is_provisioned
+from ai_cost_tracker.connectors.fake import PTU_METER, FakeConnector
 
 # List prices the fake bills at, $ per 1M tokens: (input, output).
 PRICES = {
@@ -25,6 +26,8 @@ async def test_weekend_cost_lower_than_weekday() -> None:
     fake, account, _ = await _setup()
     daily: dict[tuple[str, date], Decimal] = defaultdict(Decimal)
     for rec in await fake.pull_cost(account, *WEEK):
+        if rec.sku_meter == PTU_METER:  # reserved capacity: same cost every day by design
+            continue
         daily[(rec.resource_id, rec.charge_period_start)] += rec.billed_cost
     for resource in {r for r, _ in daily}:
         weekday = [v for (r, d), v in daily.items() if r == resource and d.weekday() < 5]
@@ -45,8 +48,9 @@ async def test_cost_matches_tokens_times_price() -> None:
         tokens[(row.resource_id, "output")] += row.output_tokens
         model_of[row.resource_id] = row.model
 
-    cost = await fake.pull_cost(account, day, day)
-    assert len(cost) == 2 * len(deployments)
+    cost = [r for r in await fake.pull_cost(account, day, day) if r.sku_meter != PTU_METER]
+    token_deployments = [d for d in deployments if not is_provisioned(d.sku)]
+    assert len(cost) == 2 * len(token_deployments)
     for rec in cost:
         direction = "input" if " Inp " in rec.sku_meter else "output"
         price = PRICES[model_of[rec.resource_id]][0 if direction == "input" else 1]

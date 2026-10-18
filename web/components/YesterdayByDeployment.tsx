@@ -4,6 +4,7 @@ import Link from "next/link";
 import { shownCost, yesterday, type ApiClient, type DayStatus, type Deployment } from "@/lib/api";
 import { formatCount, formatDay, formatMoney } from "@/lib/format";
 import { useSession } from "./AuthProvider";
+import { ExportButton } from "./ExportButton";
 import { EmptyNotice, ErrorNotice, Skeleton, ui as styles, useLoad } from "./ui";
 
 interface Row {
@@ -61,8 +62,11 @@ export function YesterdayByDeployment({ currency: currencyHint }: { currency?: s
 
   return (
     <section className={styles.panel}>
-      <h2 className={styles.panelTitle}>Yesterday by deployment</h2>
-      <p className={styles.panelSub}>{formatDay(day)} (UTC day, as billed)</p>
+      <div className={styles.panelHead}>
+        <h2 className={styles.panelTitle}>Yesterday by deployment</h2>
+        <ExportButton name="costs-daily" query={{ start: day, end: day, group_by: "deployment" }} />
+      </div>
+      <p className={styles.panelSub} style={{ marginTop: -4 }}>{formatDay(day)} (UTC day, as billed)</p>
       {state.status === "loading" && <Skeleton height={200} label="Loading yesterday's cost…" />}
       {state.status === "error" && (
         <ErrorNotice title="Couldn't load yesterday's cost" message={state.message} onRetry={retry} />

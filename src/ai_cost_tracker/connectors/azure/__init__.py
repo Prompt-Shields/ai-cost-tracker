@@ -1,4 +1,4 @@
-"""Azure connector: Resource Graph for inventory, Cost Management for cost, Monitor for tokens.
+"""Azure connector: Resource Graph for inventory, Cost Management for cost, Monitor for metrics.
 
 Needs only the ``Reader`` role on each subscription (ARCHITECTURE.md §4.3). Request and
 response shapes follow Microsoft's REST docs; anything not yet seen on a live pay-as-you-go
@@ -12,6 +12,7 @@ import httpx
 
 from ai_cost_tracker.connectors.azure import cost_query, metrics
 from ai_cost_tracker.connectors.azure.client import ArmClient, TokenProvider
+from ai_cost_tracker.connectors.base import PtuSample, is_provisioned
 from ai_cost_tracker.core.models import CloudAccount, CostRecord, Deployment, TokenUsage
 
 RESOURCE_GRAPH_URL = "/providers/Microsoft.ResourceGraph/resources?api-version=2022-10-01"
@@ -116,6 +117,23 @@ class AzureConnector:
                     # Chunks don't overlap, but a boundary bucket could appear in both.
                     key = (u.resource_id, u.deployment, u.bucket_start)
                     by_key.setdefault(key, u)
+        return list(by_key.values())
+
+    async def pull_ptu_utilization(
+        self, account_id: str, deployments: list[Deployment], start: datetime, end: datetime
+    ) -> list[PtuSample]:
+        """Hourly PTU utilisation from Monitor; one call per account and ≤7-day chunk."""
+        wanted: dict[str, set[str]] = {}
+        for d in deployments:
+            if is_provisioned(d.sku):
+                wanted.setdefault(d.resource_id, set()).add(d.name)
+        by_key: dict[tuple[str, str, datetime], PtuSample] = {}
+        for resource_id in sorted(wanted):
+            for chunk_start, chunk_end in metrics.time_chunks(start, end):
+                path, params = metrics.ptu_request(resource_id, chunk_start, chunk_end)
+                payload = await self._client.get(path, params=params)
+                for s in metrics.parse_ptu(resource_id, wanted[resource_id], payload):
+                    by_key.setdefault((s.resource_id, s.deployment, s.bucket_start), s)
         return list(by_key.values())
 
     async def aclose(self) -> None:
