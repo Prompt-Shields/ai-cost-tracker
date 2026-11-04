@@ -154,7 +154,7 @@ class Price(Base):
     unit_price: Mapped[Decimal] = mapped_column(Money)
     currency: Mapped[str] = mapped_column(String(3))
     valid_from: Mapped[date] = mapped_column(Date)
-    # Parsed from sku_meter with normalise.azure_meters; null when unmapped.
+    # Parsed from sku_meter with normalise.parse_meter (per cloud); null when unmapped.
     ai_model: Mapped[str | None] = mapped_column(String(128))
     ai_direction: Mapped[str | None] = mapped_column(String(32))
     ai_deployment_type: Mapped[str | None] = mapped_column(String(32))

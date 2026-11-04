@@ -105,13 +105,16 @@ async def iter_series(client: Any, project_id: str, params: dict[str, Any]) -> A
     """Every time series across ``nextPageToken`` pages."""
     url = f"{MONITORING}/projects/{project_id}/timeSeries"
     token: str | None = None
+    seen: set[str] = set()
     while True:
         page = await client.get(url, params={**params, "pageToken": token} if token else params)
         for series in page.get("timeSeries") or []:
             yield series
         token = page.get("nextPageToken")
-        if not token:
+        # A repeated token would loop forever; the API never sends one, but stop if it does.
+        if not token or token in seen:
             return
+        seen.add(token)
 
 
 async def project_containers(client: Any, project_id: str) -> set[str] | None:
