@@ -1,0 +1,7 @@
+{
+  "skus": [
+    {"skuId": "AAAA-1111", "description": "Gemini 2.5 Flash Text Input - Predictions"},
+    {"skuId": "AAAA-2222", "description": "Gemini 2.5 Flash Text Output - Predictions"},
+    {"skuId": "AAAA-3333", "description": "Custom Training Nvidia T4 GPU running in Americas"}
+  ]
+}
