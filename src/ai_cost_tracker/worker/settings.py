@@ -21,6 +21,7 @@ from ai_cost_tracker.worker.jobs import (
     ptu_job,
     spikes_daily_job,
     spikes_intraday_job,
+    sync_fx_job,
     sync_inventory_job,
     sync_prices_job,
     untagged_weekly_job,
@@ -57,6 +58,7 @@ class WorkerSettings:
         # queue a new backfill straight away; 12 months under throttling can take hours.
         func(backfill_account_job, keep_result=0, timeout=4 * 3600),
         sync_prices_job,
+        sync_fx_job,
         discovery_job,
         check_access_job,
         *M2_JOBS,
@@ -67,6 +69,8 @@ class WorkerSettings:
         cron(ingest_usage_job, minute=set(range(0, 60, 5))),
         cron(ingest_cost_job, hour=set(range(0, 24, 4)), minute=23),
         cron(sync_prices_job, hour=2, minute=41, run_at_startup=True),
+        # The ECB publishes around 16:00 CET; 17:11 UTC catches the day's rates.
+        cron(sync_fx_job, hour=17, minute=11, run_at_startup=True),
         cron(discovery_job, hour=3, minute=13),
         cron(check_access_job, minute=set(range(3, 60, 10))),
         # M2: alerts are raised by these jobs and delivered by the notifier.

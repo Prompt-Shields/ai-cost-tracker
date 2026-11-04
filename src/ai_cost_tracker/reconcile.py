@@ -127,7 +127,7 @@ async def _estimated(
         )
     )
     for r in rows:
-        key = (r.cloud, r.account_id, normalise_model(r.model) or UNMAPPED, r.day)
+        key = (r.cloud, r.account_id, normalise_model(r.model, r.cloud) or UNMAPPED, r.day)
         totals[key] = totals.get(key, Decimal(0)) + Decimal(r.estimated_cost)
         if r.price_missing:
             missing.add(key)
@@ -162,7 +162,7 @@ async def _billed(
     )
     totals: dict[_Key, Decimal] = {}
     for cloud, account, model, day, cost in rows:
-        key = (cloud, account, normalise_model(model) or UNMAPPED, day)
+        key = (cloud, account, normalise_model(model, cloud) or UNMAPPED, day)
         totals[key] = totals.get(key, Decimal(0)) + Decimal(cost or 0)
     return totals
 

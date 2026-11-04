@@ -49,6 +49,7 @@ resources
 
 class AzureConnector:
     name = "azure"
+    cloud = "azure"
 
     def __init__(self, subscription_ids: list[str] | None = None, client: Any = None) -> None:
         self._only = {s.lower() for s in subscription_ids or []}

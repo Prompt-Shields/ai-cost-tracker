@@ -38,6 +38,32 @@ class Settings(BaseSettings):
     # Public URL of the web app, used to build the shareable "grant access" link.
     web_base_url: str = "http://localhost:3000"
 
+    # GCP (M3, ARCHITECTURE.md §8). Runs alongside the Azure connector when enabled; the
+    # fake connector always brings a demo GCP project. No JSON keys: the app's Azure managed
+    # identity is exchanged for a GCP token through Workload Identity Federation.
+    gcp_enabled: bool = False
+    # Projects to track. Empty means every project the service account can see that uses
+    # Vertex AI.
+    gcp_project_ids: list[str] = []
+    # Full resource name of the WIF provider that trusts our Entra tenant:
+    # //iam.googleapis.com/projects/<number>/locations/global/workloadIdentityPools/<pool>
+    # /providers/<provider> (one string, no line break).
+    gcp_wif_audience: str = ""
+    # Service account the federated identity impersonates; projects grant their roles to it.
+    gcp_service_account: str = ""
+    # Entra scope requested for the subject token handed to Google STS.
+    gcp_azure_token_scope: str = "api://AzureADTokenExchange/.default"
+    # Detailed billing export table, "<project>.<dataset>.gcp_billing_export_resource_v1_<id>".
+    gcp_billing_export_table: str = ""
+    # BigQuery location of the billing export dataset (jobs must run there).
+    gcp_billing_export_location: str = "US"
+    # Vertex AI regions to list endpoints in ("global" covers the global endpoint).
+    gcp_regions: list[str] = ["global", "us-central1", "us-east4", "europe-west4"]
+
+    # Currency every total is reported in; other billing currencies are converted with the
+    # daily ECB reference rate (fx.py).
+    reporting_currency: str = "USD"
+
     # Email notifications (issue #30). Leave smtp_host empty to disable email channels.
     smtp_host: str = ""
     smtp_port: int = 587

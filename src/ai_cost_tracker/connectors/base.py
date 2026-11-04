@@ -4,7 +4,7 @@ from typing import Protocol
 
 from pydantic import BaseModel, Field
 
-from ai_cost_tracker.core.models import CloudAccount, CostRecord, Deployment, TokenUsage
+from ai_cost_tracker.core.models import Cloud, CloudAccount, CostRecord, Deployment, TokenUsage
 
 # Deployment SKUs billed per hour of reserved capacity (PTU), compared case-insensitively.
 PROVISIONED_SKUS = frozenset(
@@ -32,9 +32,14 @@ class PtuSample(BaseModel):
 
 
 class Connector(Protocol):
-    """What every cloud integration implements. Ingestion and the UI only see this."""
+    """What every cloud integration implements. Ingestion and the UI only see this.
+
+    ``cloud`` is the cloud whose accounts the connector reads; the worker runs one connector
+    per cloud and only hands each the accounts of its own cloud.
+    """
 
     name: str
+    cloud: Cloud
 
     async def list_accounts(self, include_all: bool = False) -> list[CloudAccount]:
         """Accounts (subscriptions / projects) the connector should ingest.

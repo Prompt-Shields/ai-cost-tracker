@@ -19,7 +19,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ai_cost_tracker.db.models import DailyEstimate, DeploymentRow, Price, TokenUsageRow
-from ai_cost_tracker.normalise.azure_meters import parse_meter
+from ai_cost_tracker.normalise import canonical_model
 
 _QUANT = Decimal("0.0000000001")
 _TOKEN_DIRECTIONS = ("input", "output")
@@ -37,16 +37,14 @@ SKU_DEPLOYMENT_TYPE = {
 }
 
 
-def normalise_model(name: str | None) -> str | None:
+def normalise_model(name: str | None, cloud: str = "azure") -> str | None:
     """Canonical model name, shared by deployment models and meter-parsed models.
 
-    Runs the meter parser on the name, so "gpt-4o-2024-08-06", "GPT 4o" and the meter's
-    "gpt-4o" all become "gpt-4o"; unknown families fall back to the lowercased name.
+    On Azure this runs the meter parser on the name, so "gpt-4o-2024-08-06", "GPT 4o" and the
+    meter's "gpt-4o" all become "gpt-4o"; unknown families fall back to the lowercased name.
+    Other clouds use their own rules (``normalise.canonical_model``).
     """
-    if not name:
-        return None
-    info = parse_meter(name)
-    return info.model if info else name.strip().lower()
+    return canonical_model(cloud, name)
 
 
 def deployment_type(sku: str | None) -> str:
@@ -64,18 +62,19 @@ class _Group:
 
 @dataclass
 class _PriceBook:
-    """Per (model, direction, type): {region: [(valid_from, price per token)] newest first}."""
+    """Per (cloud, model, direction, type): {region: [(valid_from, price per token)]}, newest
+    first."""
 
-    rows: dict[tuple[str, str, str], dict[str, list[tuple[date, Decimal]]]] = field(
+    rows: dict[tuple[str, str, str, str], dict[str, list[tuple[date, Decimal]]]] = field(
         default_factory=lambda: defaultdict(lambda: defaultdict(list))
     )
 
     def add(self, p: Price) -> None:
-        model = normalise_model(p.ai_model)
+        model = normalise_model(p.ai_model, p.cloud)
         if not (model and p.ai_direction and p.ai_deployment_type and p.tokens_per_unit):
             return
         per_token = Decimal(p.unit_price) / Decimal(p.tokens_per_unit)
-        key = (model, p.ai_direction, p.ai_deployment_type)
+        key = (p.cloud, model, p.ai_direction, p.ai_deployment_type)
         self.rows[key][p.region or ""].append((p.valid_from, per_token))
 
     def finish(self) -> None:
@@ -84,11 +83,17 @@ class _PriceBook:
                 history.sort(reverse=True)
 
     def lookup(
-        self, model: str, direction: str, dtype: str, region: str | None, day: date
+        self,
+        model: str,
+        direction: str,
+        dtype: str,
+        region: str | None,
+        day: date,
+        cloud: str = "azure",
     ) -> Decimal | None:
         """Exact region, then any region of the same type, then the global type."""
         for t in (dtype, "global") if dtype != "global" else (dtype,):
-            regions = self.rows.get((model, direction, t))
+            regions = self.rows.get((cloud, model, direction, t))
             if not regions:
                 continue
             if region and (hit := _at(regions.get(region.lower(), []), day)) is not None:
@@ -120,10 +125,10 @@ async def compute_estimates(
     )
     for (cloud, resource_id, deployment, day), g in groups.items():
         dep = deployments.get((cloud, resource_id, deployment))
-        model = normalise_model(g.model or (dep.model if dep else None))
+        model = normalise_model(g.model or (dep.model if dep else None), cloud)
         dtype = deployment_type(dep.sku if dep else None)
         region = dep.region if dep else None
-        costs, missing = _price(book, model, dtype, region, day, g)
+        costs, missing = _price(book, cloud, model, dtype, region, day, g)
         session.add(
             DailyEstimate(
                 tenant_id=tenant_id,
@@ -147,7 +152,13 @@ async def compute_estimates(
 
 
 def _price(
-    book: _PriceBook, model: str | None, dtype: str, region: str | None, day: date, g: _Group
+    book: _PriceBook,
+    cloud: str,
+    model: str | None,
+    dtype: str,
+    region: str | None,
+    day: date,
+    g: _Group,
 ) -> tuple[dict[str, Decimal], bool]:
     costs = {d: Decimal(0) for d in _TOKEN_DIRECTIONS}
     if dtype == "provisioned":
@@ -156,7 +167,7 @@ def _price(
     for direction, tokens in (("input", g.input_tokens), ("output", g.output_tokens)):
         if not tokens:
             continue
-        per_token = book.lookup(model, direction, dtype, region, day) if model else None
+        per_token = book.lookup(model, direction, dtype, region, day, cloud) if model else None
         if per_token is None:
             missing = True
             continue
@@ -204,7 +215,6 @@ async def _price_book(session: AsyncSession, end: date) -> _PriceBook:
     book = _PriceBook()
     rows = await session.scalars(
         select(Price).where(
-            Price.cloud == "azure",
             Price.currency == "USD",
             Price.valid_from <= end,
             Price.tokens_per_unit.is_not(None),
