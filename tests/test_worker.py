@@ -185,6 +185,19 @@ async def test_inventory_records_sync_state(factory, settings):
     assert state is not None and state.last_success_at is not None and state.last_error is None
 
 
+async def test_each_cloud_only_judges_its_own_accounts(factory, settings):
+    """The GCP inventory pass must not flag Azure subscriptions as unlisted, and vice versa."""
+    from ai_cost_tracker.connectors.fake_gcp import FakeGcpConnector
+
+    azure, gcp = FakeConnector(), FakeGcpConnector()
+    await jobs.run_inventory(factory, azure, settings)
+    await jobs.run_inventory(factory, gcp, settings)
+    for connector in (azure, gcp):
+        account = (await connector.list_accounts())[0].account_id
+        state = await _state(factory, account, "inventory")
+        assert state.last_error is None, (connector.cloud, state.last_error)
+
+
 async def test_usage_window_follows_watermark(factory, settings):
     connector = FakeConnector()
     await jobs.run_inventory(factory, connector, settings)

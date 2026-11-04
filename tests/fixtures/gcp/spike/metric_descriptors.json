@@ -1,0 +1,8 @@
+{
+  "metricDescriptors": [
+    {"type": "aiplatform.googleapis.com/publisher/online_serving/token_count",
+     "labels": [{"key": "type"}, {"key": "max_token_size"}]},
+    {"type": "aiplatform.googleapis.com/publisher/online_serving/model_invocation_count",
+     "labels": [{"key": "response_code"}]}
+  ]
+}

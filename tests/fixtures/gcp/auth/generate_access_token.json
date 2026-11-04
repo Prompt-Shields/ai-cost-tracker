@@ -1,0 +1,5 @@
+{
+  "_comment": "Shape from Google's public IAM Credentials REST docs (generateAccessToken); values are fakes.",
+  "accessToken": "ya29.fake-service-account-token",
+  "expireTime": "2026-11-04T13:00:00Z"
+}

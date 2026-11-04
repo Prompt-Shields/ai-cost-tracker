@@ -19,6 +19,17 @@ param azureSubscriptionIds = json(readEnvironmentVariable('ACT_AZURE_SUBSCRIPTIO
 param allowedIpRanges = json(readEnvironmentVariable('ACT_ALLOWED_IP_RANGES', '[]'))
 param publicWebUrl = readEnvironmentVariable('ACT_PUBLIC_WEB_URL', '')
 
+// GCP via Workload Identity Federation (docs/gcp-setup.md). Not secrets: no keys exist.
+param gcpEnabled = bool(readEnvironmentVariable('ACT_GCP_ENABLED', 'false'))
+param gcpProjectIds = json(readEnvironmentVariable('ACT_GCP_PROJECT_IDS', '[]'))
+param gcpWifAudience = readEnvironmentVariable('ACT_GCP_WIF_AUDIENCE', '')
+param gcpServiceAccount = readEnvironmentVariable('ACT_GCP_SERVICE_ACCOUNT', '')
+param gcpAzureTokenScope = readEnvironmentVariable('ACT_GCP_AZURE_TOKEN_SCOPE', '')
+param gcpBillingExportTable = readEnvironmentVariable('ACT_GCP_BILLING_EXPORT_TABLE', '')
+param gcpBillingExportLocation = readEnvironmentVariable('ACT_GCP_BILLING_EXPORT_LOCATION', '')
+param gcpRegions = json(readEnvironmentVariable('ACT_GCP_REGIONS', '[]'))
+param reportingCurrency = readEnvironmentVariable('ACT_REPORTING_CURRENCY', '')
+
 // Set by the workflow per step (bootstrap, migrate, roll).
 param imageTag = readEnvironmentVariable('ACT_IMAGE_TAG', 'replace-with-commit-sha')
 param migrationImageTag = readEnvironmentVariable('ACT_MIGRATION_IMAGE_TAG', readEnvironmentVariable('ACT_IMAGE_TAG', 'replace-with-commit-sha'))

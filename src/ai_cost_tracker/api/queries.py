@@ -16,8 +16,15 @@ tokens (even split when there are none). That split, and tag filtering/grouping 
 on it, is approximate: billing data alone can't tell those deployments apart. Cost lines
 whose model no deployment serves stay on the resource as "unattributed" and take the tags
 all of the resource's deployments agree on.
+
+Currencies (M3, issue #50): every billed cost line and estimate is converted per day from its
+own currency into the reporting currency (``fx.FxBook``) before anything is summed, so Azure
+(USD) and GCP (often EUR) add up. ``Dataset.fx_approximate`` says whether any conversion used a
+stale or missing rate. Data already in the reporting currency is never touched, so USD-only
+tenants get exactly the numbers they always did.
 """
 
+import re
 import uuid
 from collections import defaultdict
 from collections.abc import Iterable
@@ -30,6 +37,7 @@ from sqlalchemy import Date, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
+from ai_cost_tracker.config import get_settings
 from ai_cost_tracker.connectors.base import is_provisioned
 from ai_cost_tracker.db.models import (
     CostLine,
@@ -38,12 +46,18 @@ from ai_cost_tracker.db.models import (
     Reconciliation,
     TokenUsageRow,
 )
+from ai_cost_tracker.fx import load_fx_book
 from ai_cost_tracker.normalise.azure_meters import PROVISIONED_MODEL
 
 UNMAPPED = "unmapped"
 UNTAGGED = "untagged"
 UNATTRIBUTED = "unattributed"
 DEFAULT_CURRENCY = "USD"
+DEFAULT_CLOUD = "azure"
+CLOUDS = ("azure", "gcp", "aws")  # display order: Azure first
+CLOUD_LABELS = {"azure": "Azure", "gcp": "Google Cloud", "aws": "AWS"}
+# connectors/gcp/ids.py's resource id; repeated so the API never imports the GCP connector.
+_GCP_RESOURCE = re.compile(r"^//aiplatform\.googleapis\.com/projects/([^/]+)/locations/([^/]+)$")
 STATUSES = ("estimated", "billed", "finalised")  # ascending: how settled a day's cost is
 INPUT_DIRECTIONS = frozenset({"input", "cached_input"})
 OUTPUT_DIRECTIONS = frozenset({"output"})
@@ -60,6 +74,7 @@ class Filters:
     tag: tuple[str, str] | None = None
     resource_id: str | None = None
     deployment: str | None = None
+    cloud: str | None = None
 
 
 @dataclass(frozen=True)
@@ -69,6 +84,7 @@ class CellKey:
     resource_id: str
     deployment: str | None  # None: billed cost no deployment could be matched to
     model: str
+    cloud: str = DEFAULT_CLOUD
 
 
 @dataclass
@@ -113,7 +129,13 @@ class Inventory:
 
 
 def deployment_label(resource_id: str, deployment: str | None) -> str:
-    """``<account resource name>/<deployment>``: readable and unique within a tenant."""
+    """``<account resource name>/<deployment>``: readable and unique within a tenant.
+
+    GCP resources are a project + location, so they read ``<project>/<location>/<deployment>``.
+    """
+    gcp = _GCP_RESOURCE.match(resource_id)
+    if gcp is not None:
+        return f"{gcp[1]}/{gcp[2]}/{deployment or UNATTRIBUTED}"
     resource = resource_id.rstrip("/").rsplit("/", 1)[-1] or resource_id
     return f"{resource}/{deployment or UNATTRIBUTED}"
 
@@ -123,6 +145,8 @@ class Dataset:
     cells: dict[CellKey, Cell] = field(default_factory=dict)
     # (day, account_id) -> estimated | billed | finalised
     status: dict[tuple[date, str], str] = field(default_factory=dict)
+    currency: str = DEFAULT_CURRENCY  # every amount above is in this currency
+    fx_approximate: bool = False  # some amount was converted with a stale or missing rate
 
     def day_status(self, day: date, account_id: str) -> str:
         return self.status.get((day, account_id), "estimated")
@@ -179,6 +203,35 @@ def _model_filter(col: Any, model: str | None) -> list[ColumnElement]:
     return [col.is_(None)] if model == UNMAPPED else [col == model]
 
 
+def cloud_filter(col: Any, cloud: str | None) -> list[ColumnElement]:
+    return [] if cloud is None else [col == cloud]
+
+
+class _Converter:
+    """Converts amounts into the reporting currency, loading FX rates only when needed."""
+
+    def __init__(self, session: AsyncSession, start: date, end: date, to_ccy: str):
+        self.session, self.start, self.end, self.to_ccy = session, start, end, to_ccy
+        self.book: Any = None
+        self.approximate = False
+
+    async def prepare(self, currencies: Iterable[str | None]) -> None:
+        if self.book is None and any(c and c != self.to_ccy for c in currencies):
+            self.book = await load_fx_book(self.session, self.start, self.end)
+
+    def __call__(self, amount: Decimal, day: date, from_ccy: str | None) -> Decimal:
+        if not from_ccy or from_ccy == self.to_ccy:
+            return amount
+        converted, approximate = self.book.convert(amount, day, from_ccy, self.to_ccy)
+        self.approximate |= approximate
+        return converted
+
+
+def get_reporting_currency() -> str:
+    """The currency every total is reported in (``ACT_REPORTING_CURRENCY``)."""
+    return get_settings().reporting_currency
+
+
 async def load_inventory(session: AsyncSession, tenant_id: uuid.UUID) -> Inventory:
     rows = await session.scalars(select(DeploymentRow).where(DeploymentRow.tenant_id == tenant_id))
     return Inventory(rows)
@@ -214,10 +267,16 @@ async def load(
     end: date,
     filters: Filters,
     inventory: Inventory,
+    reporting_currency: str | None = None,
 ) -> Dataset:
-    """All cells for the tenant in [start, end] that pass ``filters``, plus day statuses."""
+    """All cells for the tenant in [start, end] that pass ``filters``, plus day statuses.
+
+    Money is converted into ``reporting_currency`` (default: the configured one) per day (see
+    the module docstring).
+    """
+    reporting_currency = reporting_currency or get_reporting_currency()
     resources = _resources_for(inventory, filters)
-    data = Dataset()
+    data = Dataset(currency=reporting_currency)
     if resources is not None and not resources:
         return data
     cells: dict[CellKey, Cell] = defaultdict(Cell)
@@ -229,6 +288,7 @@ async def load(
     usage_q = (
         select(
             day,
+            TokenUsageRow.cloud,
             TokenUsageRow.account_id,
             TokenUsageRow.resource_id,
             TokenUsageRow.deployment,
@@ -241,9 +301,11 @@ async def load(
             TokenUsageRow.bucket_start >= lo,
             TokenUsageRow.bucket_start < hi,
             *_model_filter(TokenUsageRow.model, filters.model),
+            *cloud_filter(TokenUsageRow.cloud, filters.cloud),
         )
         .group_by(
             day,
+            TokenUsageRow.cloud,
             TokenUsageRow.account_id,
             TokenUsageRow.resource_id,
             TokenUsageRow.deployment,
@@ -255,9 +317,9 @@ async def load(
     if resources is not None:
         usage_q = usage_q.where(TokenUsageRow.resource_id.in_(resources))
     weights: dict[tuple[date, str, str], int] = defaultdict(int)
-    for d, account, resource, dep, model, inp, out in await session.execute(usage_q):
+    for d, cloud, account, resource, dep, model, inp, out in await session.execute(usage_q):
         d = as_date(d)
-        cell = cells[CellKey(d, account, resource, dep, model or UNMAPPED)]
+        cell = cells[CellKey(d, account, resource, dep, model or UNMAPPED, cloud)]
         cell.input_tokens += int(inp or 0)
         cell.output_tokens += int(out or 0)
         weights[(d, resource, dep)] += int(inp or 0) + int(out or 0)
@@ -265,10 +327,12 @@ async def load(
     est_q = (
         select(
             DailyEstimate.day,
+            DailyEstimate.cloud,
             DailyEstimate.account_id,
             DailyEstimate.resource_id,
             DailyEstimate.deployment,
             DailyEstimate.model,
+            DailyEstimate.currency,
             func.sum(DailyEstimate.estimated_cost),
             func.sum(DailyEstimate.input_cost),
             func.sum(DailyEstimate.output_cost),
@@ -277,56 +341,71 @@ async def load(
             DailyEstimate.tenant_id == tenant_id,
             DailyEstimate.day.between(start, end),
             *_model_filter(DailyEstimate.model, filters.model),
+            *cloud_filter(DailyEstimate.cloud, filters.cloud),
         )
         .group_by(
             DailyEstimate.day,
+            DailyEstimate.cloud,
             DailyEstimate.account_id,
             DailyEstimate.resource_id,
             DailyEstimate.deployment,
             DailyEstimate.model,
+            DailyEstimate.currency,
         )
     )
     if filters.account_id is not None:
         est_q = est_q.where(DailyEstimate.account_id == filters.account_id)
     if resources is not None:
         est_q = est_q.where(DailyEstimate.resource_id.in_(resources))
-    for d, account, resource, dep, model, total, inp, out in await session.execute(est_q):
-        cell = cells[CellKey(as_date(d), account, resource, dep, model or UNMAPPED)]
-        cell.estimated += _dec(total)
-        cell.estimated_input += _dec(inp)
-        cell.estimated_output += _dec(out)
+    est_rows = (await session.execute(est_q)).all()
+    convert = _Converter(session, start, end, reporting_currency)
+    await convert.prepare(r[6] for r in est_rows)
+    for d, cloud, account, resource, dep, model, ccy, total, inp, out in est_rows:
+        d = as_date(d)
+        cell = cells[CellKey(d, account, resource, dep, model or UNMAPPED, cloud)]
+        cell.estimated += convert(_dec(total), d, ccy)
+        cell.estimated_input += convert(_dec(inp), d, ccy)
+        cell.estimated_output += convert(_dec(out), d, ccy)
         cell.has_cost = True
 
     cost_q = (
         select(
             CostLine.charge_period_start,
+            CostLine.cloud,
             CostLine.sub_account_id,
             CostLine.resource_id,
             CostLine.ai_model,
             CostLine.ai_direction,
+            CostLine.billing_currency,
             func.sum(CostLine.billed_cost),
         )
         .where(
             CostLine.tenant_id == tenant_id,
             CostLine.charge_period_start.between(start, end),
             *_model_filter(CostLine.ai_model, filters.model),
+            *cloud_filter(CostLine.cloud, filters.cloud),
         )
         .group_by(
             CostLine.charge_period_start,
+            CostLine.cloud,
             CostLine.sub_account_id,
             CostLine.resource_id,
             CostLine.ai_model,
             CostLine.ai_direction,
+            CostLine.billing_currency,
         )
     )
     if filters.account_id is not None:
         cost_q = cost_q.where(CostLine.sub_account_id == filters.account_id)
     if resources is not None:
         cost_q = cost_q.where(CostLine.resource_id.in_(resources))
-    for d, account, resource, model, direction, billed in await session.execute(cost_q):
+    cost_rows = (await session.execute(cost_q)).all()
+    await convert.prepare(r[6] for r in cost_rows)
+    for d, cloud, account, resource, model, direction, ccy, billed in cost_rows:
         d, model = as_date(d), model or UNMAPPED
-        for dep, share in _attribute(inventory, weights, d, resource, model, _dec(billed)):
-            cell = cells[CellKey(d, account, resource, dep, model)]
+        amount = convert(_dec(billed), d, ccy)
+        for dep, share in _attribute(inventory, weights, d, resource, model, amount):
+            cell = cells[CellKey(d, account, resource, dep, model, cloud)]
             cell.billed += share
             if direction in INPUT_DIRECTIONS:
                 cell.billed_input += share
@@ -335,7 +414,8 @@ async def load(
             cell.has_cost = True
 
     data.cells = {k: c for k, c in cells.items() if _keep(inventory, filters, k)}
-    data.status = await _statuses(session, tenant_id, start, end, filters.account_id)
+    data.status = await _statuses(session, tenant_id, start, end, filters.account_id, filters.cloud)
+    data.fx_approximate = convert.approximate
     return data
 
 
@@ -376,6 +456,7 @@ async def _statuses(
     start: date,
     end: date,
     account_id: str | None,
+    cloud: str | None = None,
 ) -> dict[tuple[date, str], str]:
     """Day status per (day, account), regardless of model/tag filters: billing arrives per
     subscription and day, so a day is billed for every model once any cost line is in.
@@ -394,6 +475,9 @@ async def _statuses(
     if account_id is not None:
         recon_q = recon_q.where(Reconciliation.account_id == account_id)
         billed_q = billed_q.where(CostLine.sub_account_id == account_id)
+    if cloud is not None:
+        recon_q = recon_q.where(Reconciliation.cloud == cloud)
+        billed_q = billed_q.where(CostLine.cloud == cloud)
     status: dict[tuple[date, str], str] = {}
 
     def bump(key: tuple[date, str], value: str) -> None:

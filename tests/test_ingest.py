@@ -1,4 +1,3 @@
-import sys
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
@@ -153,8 +152,7 @@ async def test_cost_meter_parsing_and_unmapped(session, tenant_id, monkeypatch):
 
 
 async def test_cost_works_without_meter_parser(session, tenant_id, monkeypatch):
-    # A None entry in sys.modules makes the import raise ImportError.
-    monkeypatch.setitem(sys.modules, "ai_cost_tracker.normalise.azure_meters", None)
+    monkeypatch.setattr(ingest, "_meter_parser", lambda: None)
     stub = StubConnector(costs=[_cost(D1, "1")])
     assert await ingest_cost(session, tenant_id, stub, "sub-1", D1, D1) == 1
 
@@ -376,7 +374,7 @@ async def test_unmapped_queue_rolls_back_with_cost(session, tenant_id, monkeypat
 
 
 async def test_no_queue_without_meter_parser(session, tenant_id, monkeypatch):
-    monkeypatch.setitem(sys.modules, "ai_cost_tracker.normalise.azure_meters", None)
+    monkeypatch.setattr(ingest, "_meter_parser", lambda: None)
     stub = StubConnector(costs=[_cost(D1, "1", UNKNOWN)])
     await ingest_cost(session, tenant_id, stub, "sub-1", D1, D1)
     assert await _queue(session) == []

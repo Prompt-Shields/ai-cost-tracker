@@ -33,6 +33,15 @@ param allowedGroupIds array
 param roleGroups object
 param connector string
 param azureSubscriptionIds array
+param gcpEnabled bool
+param gcpProjectIds array
+param gcpWifAudience string
+param gcpServiceAccount string
+param gcpAzureTokenScope string
+param gcpBillingExportTable string
+param gcpBillingExportLocation string
+param gcpRegions array
+param reportingCurrency string
 
 @description('Public URL of the web app if a custom domain is bound; empty uses the default FQDN.')
 param publicWebUrl string
@@ -80,7 +89,7 @@ var secrets = [
 
 // Every ACT_* setting in config.py. AZURE_CLIENT_ID makes DefaultAzureCredential pick the
 // user-assigned identity (with several identities it cannot guess).
-var backendEnv = [
+var baseEnv = [
   { name: 'ACT_DATABASE_URL', secretRef: 'database-url' }
   { name: 'ACT_REDIS_URL', secretRef: 'redis-url' }
   { name: 'ACT_ENTRA_TENANT_ID', value: entraTenantId }
@@ -97,6 +106,23 @@ var backendEnv = [
   { name: 'ACT_DEFAULT_TENANT_SLUG', value: 'internal' }
   { name: 'AZURE_CLIENT_ID', value: identityClientId }
 ]
+
+// GCP settings: only the ones given, so empty params fall back to config.py defaults.
+var gcpEnv = filter(
+  [
+    { name: 'ACT_GCP_ENABLED', value: string(gcpEnabled) }
+    { name: 'ACT_GCP_PROJECT_IDS', value: empty(gcpProjectIds) ? '' : string(gcpProjectIds) }
+    { name: 'ACT_GCP_WIF_AUDIENCE', value: gcpWifAudience }
+    { name: 'ACT_GCP_SERVICE_ACCOUNT', value: gcpServiceAccount }
+    { name: 'ACT_GCP_AZURE_TOKEN_SCOPE', value: gcpAzureTokenScope }
+    { name: 'ACT_GCP_BILLING_EXPORT_TABLE', value: gcpBillingExportTable }
+    { name: 'ACT_GCP_BILLING_EXPORT_LOCATION', value: gcpBillingExportLocation }
+    { name: 'ACT_GCP_REGIONS', value: empty(gcpRegions) ? '' : string(gcpRegions) }
+    { name: 'ACT_REPORTING_CURRENCY', value: reportingCurrency }
+  ],
+  e => !empty(e.value)
+)
+var backendEnv = concat(baseEnv, gcpEnv)
 
 var identityBlock = {
   type: 'UserAssigned'

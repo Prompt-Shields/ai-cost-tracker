@@ -94,9 +94,11 @@ async def daily_spend(
     inventory: Inventory,
     start: date,
     end: date,
+    currency: str | None = None,
 ) -> tuple[dict[date, Decimal], set[date]]:
-    """Effective spend per day in [start, end], and the days that have any data at all."""
-    data = await load(session, tenant_id, start, end, filters, inventory)
+    """Effective spend per day in [start, end], in ``currency`` (the budget's), and the days
+    that have any data at all."""
+    data = await load(session, tenant_id, start, end, filters, inventory, currency)
     totals: dict[date, Decimal] = defaultdict(lambda: _ZERO)
     seen: set[date] = set()
     for key, cell in data.cells.items():
@@ -166,7 +168,9 @@ async def evaluate(
         seen: set[date] = set()
     else:
         start = min(month_bounds(today)[0], today - timedelta(days=HISTORY_DAYS))
-        totals, seen = await daily_spend(session, tenant_id, filters, inventory, start, today)
+        totals, seen = await daily_spend(
+            session, tenant_id, filters, inventory, start, today, budget.currency
+        )
     mtd, projected, method = forecast(totals, seen, today)
     amount = Decimal(str(budget.amount))
     percent = float((mtd / amount * 100).quantize(_CENTS)) if amount > 0 else 0.0

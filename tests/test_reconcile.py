@@ -3,7 +3,13 @@ from decimal import Decimal
 
 from sqlalchemy import select
 
-from ai_cost_tracker.db.models import AlertEvent, CostLine, DailyEstimate, Reconciliation
+from ai_cost_tracker.db.models import (
+    AlertEvent,
+    CostLine,
+    DailyEstimate,
+    FxRate,
+    Reconciliation,
+)
 from ai_cost_tracker.estimate import compute_estimates
 from ai_cost_tracker.normalise.azure_meters import parse_meter
 from ai_cost_tracker.reconcile import day_status, reconcile
@@ -137,3 +143,110 @@ async def test_reconcile_is_idempotent(session, tenant_id):
     await reconcile(session, tenant_id, DAY, DAY, today=DAY)
     rows = list(await session.scalars(select(Reconciliation)))
     assert len(rows) == 1 and rows[0].variance == Decimal("-0.1")
+
+
+# --- Multi-currency (M3, #49/#50): a EUR-billed project with USD estimates. ---
+
+EUR_PER_USD = Decimal("0.92")
+
+
+def _gcp_cost(tenant_id, cost, currency="EUR", day=DAY, sku="Gemini 2.5 Flash Text Input"):
+    return CostLine(
+        tenant_id=tenant_id,
+        cloud="gcp",
+        sub_account_id="proj",
+        resource_id="//aiplatform.googleapis.com/projects/proj/locations/us-central1",
+        charge_period_start=day,
+        sku_meter=sku,
+        billed_cost=Decimal(cost),
+        billing_currency=currency,
+        ai_model="gemini-2.5-flash",
+        ai_direction="input",
+    )
+
+
+def _gcp_estimate(tenant_id, cost, day=DAY):
+    return DailyEstimate(
+        tenant_id=tenant_id,
+        cloud="gcp",
+        account_id="proj",
+        resource_id="//aiplatform.googleapis.com/projects/proj/locations/us-central1",
+        deployment="gemini-2.5-flash",
+        model="gemini-2.5-flash",
+        day=day,
+        estimated_cost=Decimal(cost),
+        currency="USD",
+    )
+
+
+def _eur_usd(day=DAY, rate=Decimal("1") / EUR_PER_USD):
+    return FxRate(day=day, base="EUR", quote="USD", rate=rate.quantize(Decimal("1e-10")))
+
+
+async def test_eur_billed_matches_usd_estimate_after_conversion(session, tenant_id):
+    session.add_all([_gcp_estimate(tenant_id, "10.00"), _gcp_cost(tenant_id, "9.20"), _eur_usd()])
+    await session.commit()
+    await reconcile(session, tenant_id, DAY, DAY, today=DAY)
+    row = await session.scalar(select(Reconciliation))
+    # Recorded in the billed currency (EUR).
+    assert row.billed_cost == Decimal("9.20")
+    assert abs(row.estimated_cost - Decimal("9.20")) < Decimal("0.000001")
+    assert abs(row.variance) <= Decimal("0.000001")
+    assert await session.scalar(select(AlertEvent)) is None
+
+
+async def test_eur_billed_mismatch_after_conversion_alerts(session, tenant_id):
+    session.add_all([_gcp_estimate(tenant_id, "10.00"), _gcp_cost(tenant_id, "8.00"), _eur_usd()])
+    await session.commit()
+    await reconcile(session, tenant_id, DAY, DAY, today=DAY)
+    alert = await session.scalar(select(AlertEvent))
+    assert alert.subject == "proj/gemini-2.5-flash/2025-03-03"
+    assert alert.details["currency"] == "EUR"
+    assert alert.details["fx_approximate"] is False
+    assert Decimal(alert.details["variance"]) == Decimal("0.15")  # 9.20 vs 8.00 EUR
+
+
+async def test_stale_rate_is_flagged_approximate(session, tenant_id):
+    old = DAY.replace(day=1).replace(month=2)  # >7 days before DAY
+    session.add_all(
+        [_gcp_estimate(tenant_id, "10.00"), _gcp_cost(tenant_id, "5.00"), _eur_usd(day=old)]
+    )
+    await session.commit()
+    await reconcile(session, tenant_id, DAY, DAY, today=DAY)
+    alert = await session.scalar(select(AlertEvent))
+    assert alert.details["fx_approximate"] is True
+
+
+async def test_missing_rate_skips_alert(session, tenant_id):
+    session.add_all([_gcp_estimate(tenant_id, "10.00"), _gcp_cost(tenant_id, "5.00")])
+    await session.commit()
+    await reconcile(session, tenant_id, DAY, DAY, today=DAY)
+    row = await session.scalar(select(Reconciliation))
+    assert row.billed_cost == Decimal("5.00") and row.estimated_cost == Decimal("10.00")
+    # The amounts are in different currencies, so no (false) variance alert.
+    assert await session.scalar(select(AlertEvent)) is None
+
+
+async def test_unbilled_day_keeps_estimate_currency(session, tenant_id):
+    session.add_all([_gcp_estimate(tenant_id, "10.00"), _eur_usd()])
+    await session.commit()
+    await reconcile(session, tenant_id, DAY, DAY, today=DAY)
+    row = await session.scalar(select(Reconciliation))
+    assert row.estimated_cost == Decimal("10.00") and row.billed_cost is None
+
+
+async def test_mixed_billing_currencies_use_dominant_one(session, tenant_id):
+    session.add_all(
+        [
+            _gcp_estimate(tenant_id, "10.00"),
+            _gcp_cost(tenant_id, "8.28"),  # EUR, dominant
+            _gcp_cost(tenant_id, "1.00", currency="USD", sku="Gemini 2.5 Flash Text Output"),
+            _eur_usd(),
+        ]
+    )
+    await session.commit()
+    await reconcile(session, tenant_id, DAY, DAY, today=DAY)
+    row = await session.scalar(select(Reconciliation))
+    # 8.28 EUR + 1 USD (0.92 EUR) = 9.20 EUR billed, matching the 10 USD estimate.
+    assert abs(row.billed_cost - Decimal("9.20")) < Decimal("0.000001")
+    assert abs(row.variance) <= Decimal("0.000001")

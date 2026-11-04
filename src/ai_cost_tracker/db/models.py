@@ -154,7 +154,7 @@ class Price(Base):
     unit_price: Mapped[Decimal] = mapped_column(Money)
     currency: Mapped[str] = mapped_column(String(3))
     valid_from: Mapped[date] = mapped_column(Date)
-    # Parsed from sku_meter with normalise.azure_meters; null when unmapped.
+    # Parsed from sku_meter with normalise.parse_meter (per cloud); null when unmapped.
     ai_model: Mapped[str | None] = mapped_column(String(128))
     ai_direction: Mapped[str | None] = mapped_column(String(32))
     ai_deployment_type: Mapped[str | None] = mapped_column(String(32))
@@ -246,6 +246,8 @@ class Reconciliation(Base):
     variance: Mapped[Decimal | None] = mapped_column(Numeric(12, 6))
     # estimated | billed | finalised
     day_status: Mapped[str] = mapped_column(String(16), default="estimated")
+    # Currency of both amounts: the account's billing currency (estimates are converted).
+    currency: Mapped[str] = mapped_column(String(3), default="USD", server_default="USD")
 
 
 class AlertEvent(Base):
@@ -427,3 +429,23 @@ class AuditLog(Base):
     target_type: Mapped[str | None] = mapped_column(String(64))
     target_id: Mapped[str | None] = mapped_column(String(512))
     details: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class FxRate(Base):
+    """Daily ECB reference rate: 1 ``base`` buys ``rate`` of ``quote`` (M3, ``fx.py``).
+
+    Public market data like ``Price``, so not tenant-scoped. The ECB publishes EUR-based rates
+    on TARGET business days; other pairs are crossed through EUR and gaps use the latest
+    earlier rate.
+    """
+
+    __tablename__ = "fx_rate"
+    __table_args__ = (UniqueConstraint("day", "base", "quote"),)
+
+    id: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True)
+    day: Mapped[date] = mapped_column(Date, index=True)
+    base: Mapped[str] = mapped_column(String(3))
+    quote: Mapped[str] = mapped_column(String(3))
+    rate: Mapped[Decimal] = mapped_column(Numeric(20, 10))
+    # "ecb" for synced rates, "demo" for seed-demo rows.
+    source: Mapped[str] = mapped_column(String(16), default="ecb")

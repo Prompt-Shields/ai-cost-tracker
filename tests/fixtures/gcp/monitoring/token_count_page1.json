@@ -1,0 +1,111 @@
+{
+  "timeSeries": [
+    {
+      "metric": {
+        "type": "aiplatform.googleapis.com/publisher/online_serving/token_count",
+        "labels": {
+          "type": "input"
+        }
+      },
+      "resource": {
+        "type": "aiplatform.googleapis.com/PublisherModel",
+        "labels": {
+          "resource_container": "123456789012",
+          "location": "us-central1",
+          "model_user_id": "gemini-2.5-flash"
+        }
+      },
+      "metricKind": "DELTA",
+      "valueType": "INT64",
+      "points": [
+        {
+          "interval": {
+            "startTime": "2025-03-08T21:00:00Z",
+            "endTime": "2025-03-08T22:00:00Z"
+          },
+          "value": {
+            "int64Value": "800"
+          }
+        },
+        {
+          "interval": {
+            "startTime": "2025-03-08T20:00:00Z",
+            "endTime": "2025-03-08T21:00:00Z"
+          },
+          "value": {
+            "int64Value": "1200"
+          }
+        }
+      ]
+    },
+    {
+      "metric": {
+        "type": "aiplatform.googleapis.com/publisher/online_serving/token_count",
+        "labels": {
+          "type": "output"
+        }
+      },
+      "resource": {
+        "type": "aiplatform.googleapis.com/PublisherModel",
+        "labels": {
+          "resource_container": "123456789012",
+          "location": "us-central1",
+          "model_user_id": "gemini-2.5-flash"
+        }
+      },
+      "metricKind": "DELTA",
+      "valueType": "INT64",
+      "points": [
+        {
+          "interval": {
+            "startTime": "2025-03-08T21:00:00Z",
+            "endTime": "2025-03-08T22:00:00Z"
+          },
+          "value": {
+            "int64Value": "90"
+          }
+        },
+        {
+          "interval": {
+            "startTime": "2025-03-08T20:00:00Z",
+            "endTime": "2025-03-08T21:00:00Z"
+          },
+          "value": {
+            "int64Value": "150"
+          }
+        }
+      ]
+    },
+    {
+      "metric": {
+        "type": "aiplatform.googleapis.com/publisher/online_serving/token_count",
+        "labels": {
+          "type": "input"
+        }
+      },
+      "resource": {
+        "type": "aiplatform.googleapis.com/PublisherModel",
+        "labels": {
+          "resource_container": "123456789012",
+          "location": "global",
+          "model_user_id": "gemini-2.5-pro"
+        }
+      },
+      "metricKind": "DELTA",
+      "valueType": "INT64",
+      "points": [
+        {
+          "interval": {
+            "startTime": "2025-03-08T22:00:00Z",
+            "endTime": "2025-03-08T23:00:00Z"
+          },
+          "value": {
+            "int64Value": "5000"
+          }
+        }
+      ]
+    }
+  ],
+  "nextPageToken": "page-2",
+  "unit": "1"
+}

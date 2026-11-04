@@ -50,14 +50,17 @@ export function CopyButton({
   );
 }
 
-/** A command shown in full (wrapped, selectable) with a copy button. */
-export function CopyBlock({ text, label }: { text: string; label?: string }) {
+/**
+ * A command shown in full (wrapped, selectable) with a copy button. `tall` caps the height for
+ * long scripts; the box scrolls inside itself so the page never scrolls sideways.
+ */
+export function CopyBlock({ text, label, tall }: { text: string; label?: string; tall?: boolean }) {
   return (
-    <div className={styles.codeBlock}>
-      <pre aria-label={label ?? "Command"}>
+    <div className={`${styles.codeBlock} ${tall ? styles.codeTall : ""}`}>
+      <pre aria-label={label ?? "Command"} tabIndex={tall ? 0 : undefined}>
         <code>{text}</code>
       </pre>
-      <CopyButton text={text} className={styles.copyBtn} />
+      <CopyButton text={text} label={tall ? "Copy all" : "Copy"} className={styles.copyBtn} />
     </div>
   );
 }

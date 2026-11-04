@@ -61,6 +61,7 @@ export interface Connection {
 
 export interface DiscoveredAccount {
   account_id: string;
+  cloud: string;
   name: string | null;
   discovered_at: string;
 }
@@ -92,10 +93,12 @@ export class ConnectApi {
     return this.call("/api/v1/connections/discovered");
   }
 
-  track(accountId: string, tracked: boolean): Promise<Connection> {
+  /** `cloud` picks the account when ids could collide across clouds; the API defaults to azure. */
+  track(accountId: string, tracked: boolean, cloud: string = "azure"): Promise<Connection> {
     return this.call(`/api/v1/connections/${encodeURIComponent(accountId)}/track`, {
       method: "POST",
       json: { tracked },
+      query: cloud === "azure" ? undefined : { cloud },
     });
   }
 

@@ -1,7 +1,7 @@
 # AI Cost Tracker: Architecture Plan (Draft v0.1)
 
 Status: **Draft for review** (v0.5: one-click onboarding; product shape, hosting, frontend, attribution and billing scope decided, see §2a).
-Owner: Prompt Shields. Last updated: 2026-10-13.
+Owner: Prompt Shields. Last updated: 2026-11-04 (M3: GCP, §8).
 
 ## 1. Problem
 
@@ -242,7 +242,10 @@ changes:
 
 ## 5. Ingestion pipeline
 
-Jobs live in `worker/jobs.py` and are scheduled by arq (`worker/settings.py`). Scheduled
+Jobs live in `worker/jobs.py` and are scheduled by arq (`worker/settings.py`). Each pass runs
+once per enabled cloud (`connectors.get_connectors`: the Azure or fake connector, plus GCP
+when enabled; the fake setup always adds a demo GCP project) and sees only that cloud's
+accounts, so one cloud failing never blocks another. Scheduled
 passes only touch subscriptions that are **tracked** and **connected**; each attempt is
 recorded per subscription and source in `sync_state`, which drives the health panel.
 
@@ -252,7 +255,8 @@ recorded per subscription and source in `sync_state`, which drives the health pa
 | usage | Every 5 min | Azure Monitor token metrics, hourly buckets, from the subscription's watermark minus 1 h overlap (2 h if none); catch-up capped at 7 days, longer gaps need a backfill. Then estimates for yesterday..today. |
 | cost | Every 4 h | Query API for the previous and current calendar month (pay-as-you-go invoice periods are approximated as calendar months, §4.5), then reconcile. Each subscription waits a deterministic delay (hash of its id, up to 15 min) to spread Cost Management load. |
 | backfill | On connect / track | 30 days of usage in 7-day chunks, then 12 months of cost one month at a time, newest first; progress saved after each chunk and resumed if interrupted. Job id `backfill:<cloud>:<account>` so duplicates collapse. |
-| prices | Daily | Retail Prices API for AI meters; a new row only when a price changes, so old estimates stay reproducible. |
+| prices | Daily | Retail Prices API for AI meters, then the Cloud Billing Catalog for Vertex AI SKUs when GCP is enabled; a new row only when a price changes, so old estimates stay reproducible. |
+| fx | Daily (17:11 UTC) | ECB euro reference rates into `fx_rate` (§6). Skipped with the fake connector, whose demo GCP project bills at a fixed demo rate. |
 | discovery | Daily | Subscriptions visible to the managed identity with AI resources but not yet known are added untracked and raise a "new subscription" banner. |
 | access check | Every 10 min | "Waiting for access" subscriptions connect themselves when the Reader role appears (then backfill); tracked ones that lose access are flagged `no_access` with an alert. |
 | reconcile | After each cost pass | Estimated vs billed per subscription, model and day; variance over 2% on a billed day raises an alert (resolved when it falls back within 2%). |
@@ -303,8 +307,13 @@ tenant ─┬─ user / role
         └─ budget / alert_rule / alert_event
 ```
 
-- **Money**: `NUMERIC(20,10)` in billing currency plus a normalised reporting currency
-  (FX table, daily rate). Never floats.
+- **Money**: `NUMERIC(20,10)` in billing currency, never floats. Every API total is in one
+  **reporting currency** (`ACT_REPORTING_CURRENCY`, default USD): `api/queries.load`
+  converts each cost line and estimate per day with the ECB daily reference rate
+  (`fx_rate`, crossed through EUR; a gap uses the latest earlier rate and the response says
+  `fx_approximate`). Budgets compare spend converted into the budget's own currency.
+  Reconciliation converts USD estimates into the account's billing currency before
+  computing variance, and `reconciliation.currency` records which currency that is.
 - **Tenancy**: `tenant_id` on every table with Postgres RLS, mirroring `prompt-shields-sdk`.
 - **Retention**: 1-min usage for 14 days, 5-min for 90 days, hourly / daily indefinitely.
   Cost lines indefinitely.
@@ -339,7 +348,7 @@ tenant ─┬─ user / role
 Each cloud implements the same `Connector` interface and emits FOCUS cost rows plus
 `token_usage` rows. The UI and alerting do not change per cloud.
 
-### Phase 3 — GCP (Vertex AI / Gemini)
+### Phase 3 — GCP (Vertex AI / Gemini) — built in M3
 
 | Data | Source |
 |------|--------|
@@ -348,6 +357,38 @@ Each cloud implements the same `Connector` interface and emits FOCUS cost rows p
 | Inventory | Vertex AI API (endpoints, models), Asset Inventory |
 | Prices | Cloud Billing Catalog API |
 | Auth | **Workload Identity Federation**: customer grants our identity `roles/bigquery.dataViewer` + `roles/bigquery.jobUser` on the billing dataset, `roles/monitoring.viewer`, `roles/aiplatform.viewer`. No JSON keys. |
+
+**How it works** (`connectors/gcp/`, setup in [docs/gcp-setup.md](gcp-setup.md)):
+
+- **Auth, no keys** (`auth.py`): the app's Azure managed identity gets an Entra token for
+  `ACT_GCP_AZURE_TOKEN_SCOPE`, Google STS exchanges it through the WIF provider
+  (`ACT_GCP_WIF_AUDIENCE`), and IAM Credentials issues a one-hour token for one service
+  account (`ACT_GCP_SERVICE_ACCOUNT`). Each project grants that service account
+  `roles/aiplatform.viewer`, `roles/monitoring.viewer` and `roles/serviceusage.serviceUsageViewer`
+  (to tell whether Vertex AI is enabled); the billing export table grants
+  `roles/bigquery.dataViewer`, its project `roles/bigquery.jobUser`.
+- **Model**: account = project; resource = Vertex AI in one project and location
+  (`//aiplatform.googleapis.com/projects/<p>/locations/<loc>`, `ids.py`); deployment = a
+  publisher model served there (name as Cloud Monitoring reports it, e.g. `gemini-2.5-flash`)
+  or a dedicated endpoint (`endpoints/<id>`). Billed cost, tokens and inventory all use that
+  resource id, so attribution works as on Azure.
+- **Cost** (`billing.py`): one BigQuery query per pull over the detailed usage cost export,
+  per UTC day, location and SKU, `cost` net of credits, tax excluded, adjustments kept,
+  zero-cost rows kept. Days are UTC to line up with token metrics; the billing console
+  defaults to Pacific time, so a day can differ at the edges.
+- **Tokens and inventory** (`monitoring.py`, `inventory.py`): Cloud Monitoring
+  `publisher/online_serving/token_count` and `model_invocation_count`, summed per hour,
+  location and model; projects from Resource Manager (Vertex AI enabled per Service Usage);
+  models seen in the last 30 days plus endpoints in `ACT_GCP_REGIONS`.
+- **Prices** (`pricing/gcp_catalog.py`, `normalise/gcp_skus.py` + `gcp_sku_rules.json`): SKU
+  descriptions parse into model, direction and deployment type like Azure meters; unknown
+  SKUs go to the unmapped-meter queue. Only text input/output are base rates for estimates.
+- **Onboarding**: "Connect Google Cloud" (`/connect/gcp`) adds a project by id, checks access,
+  and shows the `gcloud` grant commands to copy or share when access isn't there yet; waiting
+  projects connect themselves when the roles appear, as on Azure.
+- **Unverified**: metric, label and SKU names and API shapes are taken from Google's public
+  docs and marked `Assumption (spike-gcp)` in the code. `act spike-gcp --project <id>` checks
+  them on a live project and writes a sanitised report.
 
 ### Phase 4 — AWS (Bedrock)
 
@@ -435,7 +476,7 @@ ai-cost-tracker/
 | **1. Azure MVP — internal** (4–5 wks) | Azure connection for our own tenant (service principal + federated credential, set up by an admin) with per-subscription scope and bulk subscription discovery; inventory sync; Azure Monitor token metrics; one-click connect flow (§4.3) with managed identity + `Reader`; Query API cost pull and 12-month backfill; 30-day token backfill; meter parsing; daily cost by deployment / model; estimated vs billed; cost per 1M tokens. | Internal Azure tenant shows yesterday's AI cost per deployment within 1% of Cost Analysis, and today's tokens within 5 min. |
 | **2. Make it useful** (3–4 wks) | Budgets & alerts (email, Slack, Teams), spike detection, PTU utilisation & idle-capacity report, tag-based allocation to cost centres, deployment naming / tagging convention with an untagged-spend report, shared-deployment split rules, CSV export & API. | The team uses it instead of Cost Analysis for AI spend reviews. |
 | **2b. Open to external users** (3 wks, when we decide to) | Self-serve signup, Entra admin-consent connection wizard, Google login, SAML, tenant admin pages, usage limits. | First design-partner tenant onboarded without engineering help. |
-| **3. GCP** (3 wks) | WIF connection, BigQuery billing export, Vertex AI metrics & inventory. | Unified multi-cloud overview. |
+| **3. GCP** (3 wks) | WIF connection, BigQuery billing export, Vertex AI metrics & inventory, catalog prices, reporting currency. Built in M3; live checks pending (`act spike-gcp`). | Unified multi-cloud overview. |
 | **4. AWS** (3 wks) | CloudFormation role, Data Exports, Bedrock CloudWatch metrics & inventory. | Three clouds in one view. |
 | **5. Beyond** | Gateway usage ingestion for per-user / per-route attribution (once the gateway fronts Azure traffic), direct model providers, forecasting, recommendations (model swaps, PTU right-sizing), API-level links to the Prompt Shields registry. | — |
 

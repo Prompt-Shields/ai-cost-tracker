@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ConnectResult, DiscoveredSubscription } from "@/lib/api-connect";
 import { ArmConsentRequired } from "@/lib/armToken";
 import { config } from "@/lib/config";
+import { CloudSwitcher } from "./CloudSwitcher";
 import { CopyBlock, CopyButton } from "./CopyBlock";
 import { AccessPill } from "./StatusPill";
 import { errorMessage } from "./format";
@@ -65,6 +66,7 @@ function ConnectFlow() {
 
   return (
     <main className={styles.main}>
+      <CloudSwitcher active="azure" />
       <div>
         <h1 className={styles.title}>Connect Azure</h1>
         <p className={styles.lede}>
@@ -376,6 +378,7 @@ function WaitingHelp({ result }: { result: ConnectResult }) {
 function AuthDisabledNotice() {
   return (
     <main className={styles.main}>
+      <CloudSwitcher active="azure" />
       <h1 className={styles.title}>Connect Azure</h1>
       <div className={styles.notice}>
         <p className={styles.noticeTitle}>Sign-in is turned off</p>
@@ -383,7 +386,11 @@ function AuthDisabledNotice() {
           Connecting Azure uses your own Azure sign-in to list subscriptions and grant the Reader
           role, so it needs Entra ID. This build has NEXT_PUBLIC_AUTH_DISABLED=true (local
           development). Configure the Entra settings to use this page, or run{" "}
-          <code>act seed-demo</code> for demo data.
+          <code>act seed-demo</code> for demo data. Google Cloud doesn&apos;t need your sign-in:{" "}
+          <Link href="/connect/gcp" className={styles.link}>
+            connect Google Cloud
+          </Link>
+          .
         </p>
       </div>
     </main>

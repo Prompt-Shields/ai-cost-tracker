@@ -1,0 +1,19 @@
+{
+  "projects": [
+    {
+      "name": "projects/123456789012",
+      "parent": "organizations/555",
+      "projectId": "demo-ai",
+      "state": "ACTIVE",
+      "displayName": "Demo AI"
+    },
+    {
+      "name": "projects/222",
+      "parent": "organizations/555",
+      "projectId": "web-shop",
+      "state": "ACTIVE",
+      "displayName": "Web shop"
+    }
+  ],
+  "nextPageToken": "next-1"
+}

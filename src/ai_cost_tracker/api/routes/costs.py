@@ -2,6 +2,7 @@
 
 Billed cost comes from cost lines, estimated cost from token x price estimates; see
 ``api.queries`` for how a day is judged billed and how cost reaches deployments and tags.
+All money is in ``settings.reporting_currency``; ``fx_approximate`` flags stale/missing rates.
 """
 
 from collections import defaultdict
@@ -15,7 +16,16 @@ from sqlalchemy import func, select
 
 from ai_cost_tracker.api import queries as q
 from ai_cost_tracker.api.auth import get_principal
-from ai_cost_tracker.api.deps import CostFilters, Range, SessionDep, TenantId, Today, money
+from ai_cost_tracker.api.deps import (
+    Cloud,
+    CostFilters,
+    Range,
+    SessionDep,
+    SettingsDep,
+    TenantId,
+    Today,
+    money,
+)
 from ai_cost_tracker.db.models import TokenUsageRow
 
 router = APIRouter(tags=["costs"], dependencies=[Depends(get_principal)])
@@ -23,9 +33,9 @@ router = APIRouter(tags=["costs"], dependencies=[Depends(get_principal)])
 GroupBy = Annotated[
     str,
     Query(
-        description="model | deployment (<resource>/<deployment>) | account | tag:<key> "
-        '(rows without the tag go to "untagged")',
-        pattern=r"^(model|deployment|account|tag:.+)$",
+        description="model | deployment (<resource>/<deployment>) | account | cloud | "
+        'tag:<key> (rows without the tag go to "untagged")',
+        pattern=r"^(model|deployment|account|cloud|tag:.+)$",
     ),
 ]
 
@@ -35,6 +45,8 @@ def _grouper(group_by: str, inventory: q.Inventory) -> Callable[[q.CellKey], str
         return lambda k: k.model
     if group_by == "account":
         return lambda k: k.account_id
+    if group_by == "cloud":
+        return lambda k: k.cloud
     if group_by == "deployment":
         return lambda k: q.deployment_label(k.resource_id, k.deployment)
     tag_key = group_by.removeprefix("tag:")
@@ -47,12 +59,14 @@ async def costs_daily(
     session: SessionDep,
     tenant_id: TenantId,
     filters: CostFilters,
+    settings: SettingsDep,
     group_by: GroupBy = "model",
 ) -> dict[str, Any]:
     """Billed and estimated cost per day and group. Show ``estimated_cost`` for rows whose
     ``day_status`` is "estimated" (billing not in yet for every account in the row)."""
     inventory = await q.load_inventory(session, tenant_id)
-    data = await q.load(session, tenant_id, rng.start, rng.end, filters, inventory)
+    ccy = settings.reporting_currency
+    data = await q.load(session, tenant_id, rng.start, rng.end, filters, inventory, ccy)
     key_of = _grouper(group_by, inventory)
     rows: dict[tuple[date, str], dict[str, Any]] = {}
     for key, cell in data.cells.items():
@@ -76,7 +90,7 @@ async def costs_daily(
             "day_status": q.min_status(row["statuses"]),
         }
         out.append(item)
-    return {"currency": await q.currency(session, tenant_id, rng.start, rng.end), "rows": out}
+    return {"currency": data.currency, "fx_approximate": data.fx_approximate, "rows": out}
 
 
 @router.get("/usage/daily")
@@ -84,6 +98,7 @@ async def usage_daily(
     rng: Range,
     session: SessionDep,
     tenant_id: TenantId,
+    cloud: Cloud = None,
 ) -> dict[str, Any]:
     day = q.usage_day(session)
     lo, hi = q.usage_window(rng.start, rng.end)
@@ -92,6 +107,7 @@ async def usage_daily(
             day,
             TokenUsageRow.deployment,
             TokenUsageRow.model,
+            TokenUsageRow.cloud,
             func.sum(TokenUsageRow.input_tokens),
             func.sum(TokenUsageRow.output_tokens),
             func.sum(TokenUsageRow.requests),
@@ -100,21 +116,23 @@ async def usage_daily(
             TokenUsageRow.tenant_id == tenant_id,
             TokenUsageRow.bucket_start >= lo,
             TokenUsageRow.bucket_start < hi,
+            *q.cloud_filter(TokenUsageRow.cloud, cloud),
         )
-        .group_by(day, TokenUsageRow.deployment, TokenUsageRow.model)
-        .order_by(day, TokenUsageRow.deployment, TokenUsageRow.model)
+        .group_by(day, TokenUsageRow.deployment, TokenUsageRow.model, TokenUsageRow.cloud)
+        .order_by(day, TokenUsageRow.deployment, TokenUsageRow.model, TokenUsageRow.cloud)
     )
     return {
         "rows": [
             {
                 "day": q.as_date(d).isoformat(),
+                "cloud": c,
                 "deployment": dep,
                 "model": m,
                 "input_tokens": int(inp or 0),
                 "output_tokens": int(out or 0),
                 "requests": int(req or 0),
             }
-            for d, dep, m, inp, out, req in result
+            for d, dep, m, c, inp, out, req in result
         ]
     }
 
@@ -130,13 +148,15 @@ async def summary(
     tenant_id: TenantId,
     filters: CostFilters,
     today: Today,
+    settings: SettingsDep,
 ) -> dict[str, Any]:
     """Totals for the range, plus today's estimate and month to date (both relative to today,
     not the range). Costs are billed where billing is in and estimated elsewhere."""
     inventory = await q.load_inventory(session, tenant_id)
-    data = await q.load(session, tenant_id, rng.start, rng.end, filters, inventory)
-    today_data = await q.load(session, tenant_id, today, today, filters, inventory)
-    mtd = await q.load(session, tenant_id, today.replace(day=1), today, filters, inventory)
+    ccy = settings.reporting_currency
+    data = await q.load(session, tenant_id, rng.start, rng.end, filters, inventory, ccy)
+    today_data = await q.load(session, tenant_id, today, today, filters, inventory, ccy)
+    mtd = await q.load(session, tenant_id, today.replace(day=1), today, filters, inventory, ccy)
 
     models: dict[str, dict[str, Any]] = defaultdict(
         lambda: {"has_cost": False, "num": [Decimal(0)] * 5, "tok": [0, 0]}
@@ -172,9 +192,36 @@ async def summary(
             }
         )
     return {
-        "currency": await q.currency(session, tenant_id, rng.start, rng.end),
+        "currency": data.currency,
+        "fx_approximate": any(d.fx_approximate for d in (data, today_data, mtd)),
         "total_cost": money(_total(data)),
         "today_estimated_cost": money(sum((c.estimated for c in today_data.cells.values()), 0)),
         "month_to_date_cost": money(_total(mtd)),
         "by_model": by_model,
+        "by_cloud": _by_cloud(data),
     }
+
+
+def _by_cloud(data: q.Dataset) -> list[dict[str, Any]]:
+    """Each cloud's billed, estimated and effective total (same rule as ``total_cost``)."""
+    clouds: dict[str, dict[str, Any]] = defaultdict(
+        lambda: {"num": [Decimal(0)] * 3, "tok": [0, 0]}
+    )
+    for key, cell in data.cells.items():
+        c = clouds[key.cloud]
+        for i, v in enumerate((cell.billed, cell.estimated, data.effective(key, cell)[0])):
+            c["num"][i] += v
+        c["tok"][0] += cell.input_tokens
+        c["tok"][1] += cell.output_tokens
+    ranked = sorted(clouds.items(), key=lambda item: (-item[1]["num"][2], item[0]))
+    return [
+        {
+            "cloud": cloud,
+            "billed_cost": money(c["num"][0]),
+            "estimated_cost": money(c["num"][1]),
+            "total_cost": money(c["num"][2]),
+            "input_tokens": c["tok"][0],
+            "output_tokens": c["tok"][1],
+        }
+        for cloud, c in ranked
+    ]

@@ -336,7 +336,7 @@ async def run_untagged_weekly(
                 alert.resolved_at = now
                 await session.commit()
             return 0
-        currency = await q.currency(session, tenant_id, start, end)
+        currency = q.get_reporting_currency()
         ids = [d.id for d in report.deployments]
         details = {
             "week": subject,

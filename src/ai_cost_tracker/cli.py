@@ -6,12 +6,12 @@ import json
 import logging
 import sys
 from collections.abc import Sequence
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
 from ai_cost_tracker.config import get_settings
-from ai_cost_tracker.connectors import Connector, get_connector
+from ai_cost_tracker.connectors import Connector, get_connectors
 from ai_cost_tracker.worker.jobs import PassResult, run_backfill, run_once
 
 
@@ -21,7 +21,9 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("migrate", help="apply database migrations")
     seed = sub.add_parser("seed-demo", help="migrate and load demo data from the fake connector")
     seed.add_argument("--days", type=_positive_int, default=30, help="days of history (30)")
-    sub.add_parser("ingest-once", help="run one inventory + cost + usage pass and exit")
+    sub.add_parser(
+        "ingest-once", help="run one inventory + cost + usage pass per enabled cloud and exit"
+    )
 
     spike = sub.add_parser(
         "spike-azure",
@@ -32,6 +34,13 @@ def build_parser() -> argparse.ArgumentParser:
     spike.add_argument("--days", type=_positive_int, default=3, help="days of cost to query (3)")
     spike.add_argument("--account", help="resource id of the AI account to probe (default: first)")
     spike.add_argument("--model", default="gpt-4o-mini", help="model for the Retail Prices check")
+
+    gcp = sub.add_parser(
+        "spike-gcp",
+        help="check the GCP connector's assumptions on a live project; writes a report",
+    )
+    gcp.add_argument("--project", required=True, help="GCP project id to probe")
+    gcp.add_argument("--out", type=Path, default=Path("docs/spikes/gcp-vertex.md"))
 
     cmp = sub.add_parser(
         "compare-cost-analysis",
@@ -77,14 +86,19 @@ async def _with_db(coro_fn, connector: Connector, **kwargs) -> PassResult:
 
 
 def seed_demo(days: int) -> PassResult:
-    """Demo data always comes from the FakeConnector, whatever ``ACT_CONNECTOR`` says."""
+    """Demo data always comes from the fake connectors (an Azure subscription and a GCP
+    project), whatever ``ACT_CONNECTOR`` says."""
     from ai_cost_tracker.connectors.fake import FakeConnector
+    from ai_cost_tracker.connectors.fake_gcp import FakeGcpConnector
 
     migrate()
     connector = FakeConnector()
-    # Prices first: the backfill computes estimates and reconciles against them.
-    asyncio.run(_with_db(seed_prices, connector))
+    gcp = FakeGcpConnector()
+    # Prices and FX first: the backfill computes estimates and reconciles against them, and
+    # the demo GCP project bills in EUR.
+    asyncio.run(_with_db(seed_prices, connector, days=days))
     result = asyncio.run(_with_db(run_backfill, connector, days=days))
+    result.add(asyncio.run(_with_db(run_backfill, gcp, days=days)))
     asyncio.run(_with_db(seed_ptu, connector, days=days))
     return result
 
@@ -97,16 +111,36 @@ async def seed_ptu(session_factory, connector: Connector, settings, days: int) -
     return PassResult(rows=rows)
 
 
-async def seed_prices(session_factory, connector: Connector, settings) -> PassResult:
+async def seed_prices(
+    session_factory, connector: Connector, settings, days: int = 30
+) -> PassResult:
+    """Demo Azure and GCP prices, plus demo EUR/USD rates covering the backfill."""
+    from ai_cost_tracker.fx import seed_demo_fx
     from ai_cost_tracker.pricing.demo import seed_demo_prices
+    from ai_cost_tracker.pricing.demo_gcp import seed_gcp_demo_prices
 
+    today = datetime.now(UTC).date()
     async with session_factory() as session:
         await seed_demo_prices(session)
+        await seed_gcp_demo_prices(session)
+        await seed_demo_fx(session, today - timedelta(days=days + 31), today)
     return PassResult()
 
 
 def ingest_once() -> PassResult:
-    return asyncio.run(_with_db(run_once, get_connector(get_settings())))
+    result = PassResult()
+    for connector in get_connectors(get_settings()):
+        result.add(asyncio.run(_with_db(run_once, connector)))
+    return result
+
+
+def spike_gcp(args: argparse.Namespace) -> int:
+    """Live checks of every ``Assumption (spike-gcp)``; writes a sanitised report."""
+    from ai_cost_tracker.tools import spike_gcp
+
+    out = asyncio.run(spike_gcp.run_spike(get_settings(), args.project, args.out))
+    print(f"Report: {out}")
+    return 0
 
 
 def spike_azure(args: argparse.Namespace) -> int:
@@ -182,6 +216,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
     if args.command == "spike-azure":
         return spike_azure(args)
+    if args.command == "spike-gcp":
+        return spike_gcp(args)
     if args.command == "compare-cost-analysis":
         return compare_cost_analysis(args)
     result = seed_demo(args.days) if args.command == "seed-demo" else ingest_once()

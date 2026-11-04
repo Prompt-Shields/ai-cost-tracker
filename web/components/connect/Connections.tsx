@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useState } from "react";
 import type { Backfill, Connection, SourceHealth, SourceName } from "@/lib/api-connect";
+import { CloudBadge, cloudLabel } from "../CloudBadge";
 import { DiscoveryBanner } from "../DiscoveryBanner";
 import { CopyBlock } from "./CopyBlock";
 import { AccessPill, SourcePill } from "./StatusPill";
@@ -18,10 +19,18 @@ const SOURCES: { key: SourceName; label: string }[] = [
   { key: "usage", label: "Token usage" },
 ];
 
-/** Tracked first, then by name, so what is being pulled is at the top. */
+/** Azure first, then other clouds; within a cloud tracked first, then by name. */
+const CLOUD_ORDER = ["azure", "gcp", "aws"];
+const cloudRank = (c: string) => {
+  const i = CLOUD_ORDER.indexOf(c);
+  return i === -1 ? CLOUD_ORDER.length : i;
+};
+
 function sortConnections(rows: Connection[]): Connection[] {
   return [...rows].sort(
     (a, b) =>
+      cloudRank(a.cloud) - cloudRank(b.cloud) ||
+      a.cloud.localeCompare(b.cloud) ||
       Number(b.tracked) - Number(a.tracked) ||
       (a.name ?? a.account_id).localeCompare(b.name ?? b.account_id),
   );
@@ -39,13 +48,13 @@ export function Connections() {
         <div>
           <h1 className={styles.title}>Connections</h1>
           <p className={styles.lede}>
-            Per subscription: when cost, token usage and deployments were last pulled, and what to
-            do when something is wrong. Refreshes every 30 seconds.
+            Per Azure subscription or Google Cloud project: when cost, token usage and deployments
+            were last pulled, and what to do when something is wrong. Refreshes every 30 seconds.
           </p>
         </div>
         {isAdmin && (
           <Link href="/connect" className={styles.primary} style={{ textDecoration: "none" }}>
-            Connect Azure
+            Connect a cloud
           </Link>
         )}
       </div>
@@ -77,15 +86,18 @@ export function Connections() {
       )}
       {state.status === "ready" && state.data.length === 0 && (
         <div className={styles.notice}>
-          <p className={styles.noticeTitle}>No subscriptions connected yet</p>
+          <p className={styles.noticeTitle}>Nothing connected yet</p>
           <p className={styles.noticeBody}>
-            Connect Azure to start tracking AI spend. It takes one click and the read-only Reader
-            role.
+            Connect Azure subscriptions or Google Cloud projects to start tracking AI spend. Both
+            use read-only access and no secrets.
           </p>
           {isAdmin && (
             <div className={styles.actions}>
               <Link href="/connect" className={styles.primary} style={{ textDecoration: "none" }}>
                 Connect Azure
+              </Link>
+              <Link href="/connect/gcp" className={styles.secondary} style={{ textDecoration: "none" }}>
+                Connect Google Cloud
               </Link>
             </div>
           )}
@@ -98,24 +110,52 @@ export function Connections() {
               Couldn&apos;t refresh: {state.refreshError}. Showing the last loaded status.
             </p>
           )}
-          {state.data.map((c) => (
-            <ConnectionCard
-              key={`${c.cloud}:${c.account_id}`}
-              conn={c}
-              isAdmin={isAdmin}
-              onChange={(next) =>
-                update((rows) =>
-                  rows.map((r) =>
-                    r.cloud === next.cloud && r.account_id === next.account_id ? next : r,
-                  ),
-                )
-              }
-            />
+          {groupByCloud(state.data).map(({ cloud, rows }, _i, groups) => (
+            <section key={cloud} aria-labelledby={`cloud-${cloud}`} className={styles.cloudGroup}>
+              {/* Headings only help when there is more than one cloud to tell apart. */}
+              <h2
+                id={`cloud-${cloud}`}
+                className={groups.length > 1 ? styles.groupTitle : styles.srOnly}
+              >
+                {cloudLabel(cloud)} · {rows.length} {accountNoun(cloud, rows.length)}
+              </h2>
+              {rows.map((c) => (
+                <ConnectionCard
+                  key={`${c.cloud}:${c.account_id}`}
+                  conn={c}
+                  isAdmin={isAdmin}
+                  onChange={(next) =>
+                    update((all) =>
+                      all.map((r) =>
+                        r.cloud === next.cloud && r.account_id === next.account_id ? next : r,
+                      ),
+                    )
+                  }
+                />
+              ))}
+            </section>
           ))}
         </>
       )}
     </main>
   );
+}
+
+/** "subscription(s)" on Azure, "project(s)" on Google Cloud, "account(s)" elsewhere. */
+function accountNoun(cloud: string, count: number): string {
+  const noun = cloud === "azure" ? "subscription" : cloud === "gcp" ? "project" : "account";
+  return count === 1 ? noun : `${noun}s`;
+}
+
+/** Rows arrive sorted by cloud; keep that order and split them into one group per cloud. */
+function groupByCloud(rows: Connection[]): { cloud: string; rows: Connection[] }[] {
+  const groups: { cloud: string; rows: Connection[] }[] = [];
+  for (const r of rows) {
+    const last = groups[groups.length - 1];
+    if (last && last.cloud === r.cloud) last.rows.push(r);
+    else groups.push({ cloud: r.cloud, rows: [r] });
+  }
+  return groups;
 }
 
 function ConnectionCard({
@@ -144,7 +184,7 @@ function ConnectionCard({
     setBusy(true);
     setError(null);
     try {
-      const res = await api.track(conn.account_id, tracked);
+      const res = await api.track(conn.account_id, tracked, conn.cloud);
       // The response is the account; keep our health fields if it omits them.
       onChange({
         ...conn,
@@ -164,9 +204,10 @@ function ConnectionCard({
     <section className={styles.panel} aria-label={label}>
       <div className={styles.connHead}>
         <div style={{ minWidth: 0 }}>
-          <h2 className={styles.connTitle}>{label}</h2>
-          <span className={`${styles.mono} ${styles.muted}`}>
-            {conn.cloud} · {conn.account_id}
+          <h3 className={styles.connTitle}>{label}</h3>
+          <span className={styles.inlineHead}>
+            <CloudBadge cloud={conn.cloud} />
+            <span className={`${styles.mono} ${styles.muted}`}>{conn.account_id}</span>
           </span>
         </div>
         <div className={styles.connBadges}>
@@ -193,18 +234,7 @@ function ConnectionCard({
           {error}
         </p>
       )}
-      {conn.access_status !== "connected" && (
-        <p className={styles.sourceBody}>
-          {conn.access_status === "waiting_for_access"
-            ? "Waiting for the subscription owner to grant the Reader role. It connects by itself once they do."
-            : "The app has no Reader role on this subscription, so nothing can be pulled."}{" "}
-          {isAdmin && (
-            <Link href={`/connect/pending/${encodeURIComponent(conn.account_id)}`} className={styles.link}>
-              Show the command
-            </Link>
-          )}
-        </p>
-      )}
+      {conn.access_status !== "connected" && <AccessHelp conn={conn} isAdmin={isAdmin} />}
 
       <div className={styles.sources}>
         {SOURCES.map(({ key, label: sourceLabel }) => (
@@ -221,6 +251,33 @@ function ConnectionCard({
         </div>
       )}
     </section>
+  );
+}
+
+/** Why nothing is being pulled, in the cloud's own terms, with a link to the fix. */
+function AccessHelp({ conn, isAdmin }: { conn: Connection; isAdmin: boolean }) {
+  const id = encodeURIComponent(conn.account_id);
+  const gcp = conn.cloud === "gcp";
+  const waiting = conn.access_status === "waiting_for_access";
+  const text = gcp
+    ? waiting
+      ? "Waiting for the project owner to grant the read-only roles. It connects by itself once they do."
+      : "The app's service account has no access to this project, so nothing can be pulled."
+    : waiting
+      ? "Waiting for the subscription owner to grant the Reader role. It connects by itself once they do."
+      : "The app has no Reader role on this subscription, so nothing can be pulled.";
+  return (
+    <p className={styles.sourceBody}>
+      {text}{" "}
+      {isAdmin && (
+        <Link
+          href={gcp ? `/connect/gcp/grant/${id}` : `/connect/pending/${id}`}
+          className={styles.link}
+        >
+          {gcp ? "Show the commands" : "Show the command"}
+        </Link>
+      )}
+    </p>
   );
 }
 

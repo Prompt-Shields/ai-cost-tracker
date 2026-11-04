@@ -37,7 +37,7 @@ const MORE: { title: string; items: NavItem[] }[] = [
     items: [
       { href: "/notifications", label: "Notifications" },
       { href: "/connections", label: "Connections" },
-      { href: "/connect", label: "Connect Azure" },
+      { href: "/connect", label: "Connect a cloud" },
       { href: "/settings/api-keys", label: "API keys" },
       { href: "/audit", label: "Audit log", adminOnly: true },
     ],

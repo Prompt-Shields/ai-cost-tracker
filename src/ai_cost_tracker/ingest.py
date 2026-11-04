@@ -231,8 +231,8 @@ async def _sync_unmapped(
     parse = _meter_parser()
     if parse is None or not meters:
         return  # Without a parser every meter would look unmapped; don't flood the queue.
-    unmapped = sorted(k for k in meters if parse(k[1]) is None)
-    if mapped := sorted(k for k in meters if parse(k[1]) is not None):
+    unmapped = sorted(k for k in meters if parse(*k) is None)
+    if mapped := sorted(k for k in meters if parse(*k) is not None):
         await _delete_unmapped(session, tenant_id, mapped)
     if not unmapped:
         return
@@ -360,7 +360,7 @@ def _merge_usage(usage: list[TokenUsage]) -> list[TokenUsage]:
 
 
 def _cost_row(tenant_id: uuid.UUID, r: CostRecord) -> dict[str, Any]:
-    model, direction = _parse(r.sku_meter)
+    model, direction = _parse(r.cloud, r.sku_meter)
     return {
         "tenant_id": tenant_id,
         "cloud": r.cloud,
@@ -394,20 +394,18 @@ def _usage_row(tenant_id: uuid.UUID, u: TokenUsage) -> dict[str, Any]:
 
 
 def _meter_parser() -> Any:
-    """The current ``parse_meter``, looked up per call so rule changes and test patches apply."""
-    try:
-        from ai_cost_tracker.normalise.azure_meters import parse_meter
-    except ImportError:
-        return None
+    """``normalise.parse_meter(cloud, meter)``, looked up per call so test patches apply."""
+    from ai_cost_tracker.normalise import parse_meter
+
     return parse_meter
 
 
-def _parse(meter: str) -> tuple[str | None, str | None]:
-    """(model, direction) for a meter, or (None, None) when unmapped or no parser exists yet."""
+def _parse(cloud: str, meter: str) -> tuple[str | None, str | None]:
+    """(model, direction) for a meter, or (None, None) when unmapped or no parser exists."""
     parse_meter = _meter_parser()
     if parse_meter is None:
         return None, None
-    info = parse_meter(meter)
+    info = parse_meter(cloud, meter)
     if info is None:
         return None, None
     return info.model, info.direction

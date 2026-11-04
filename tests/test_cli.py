@@ -6,6 +6,7 @@ from sqlalchemy import create_engine
 from ai_cost_tracker import cli
 from ai_cost_tracker.config import get_settings
 from ai_cost_tracker.connectors.fake import FakeConnector
+from ai_cost_tracker.connectors.fake_gcp import FakeGcpConnector
 from ai_cost_tracker.db import session as db_session
 from ai_cost_tracker.db.models import Base
 from ai_cost_tracker.worker.jobs import PassResult, run_backfill, run_once
@@ -75,16 +76,21 @@ def test_seed_demo_migrates_then_ingests_with_fake_connector(calls, azure_settin
     assert cli.main(["seed-demo", "--days", "3"]) == 0
     assert calls[0] == ("migrate",)
     assert calls[1][0] is cli.seed_prices
+    assert calls[1][2] == {"days": 3}
     fn, connector, kwargs = calls[2]
     assert fn is run_backfill
     assert isinstance(connector, FakeConnector)
     assert kwargs == {"days": 3}
+    fn, connector, kwargs = calls[3]
+    assert fn is run_backfill
+    assert isinstance(connector, FakeGcpConnector)
+    assert kwargs == {"days": 3}
 
 
-def test_ingest_once_uses_configured_connector(calls, monkeypatch):
-    monkeypatch.setattr(cli, "get_connector", lambda settings: "configured")
+def test_ingest_once_runs_every_enabled_connector(calls, monkeypatch):
+    monkeypatch.setattr(cli, "get_connectors", lambda settings: ["azure", "gcp"])
     assert cli.main(["ingest-once"]) == 0
-    assert calls == [(run_once, "configured", {})]
+    assert calls == [(run_once, "azure", {}), (run_once, "gcp", {})]
 
 
 def test_migrate_command(calls):

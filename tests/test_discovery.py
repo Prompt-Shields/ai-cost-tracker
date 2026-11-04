@@ -208,3 +208,84 @@ async def test_transient_error_leaves_status_and_continues(factory, settings, te
     assert rows[NEW].access_status == "waiting_for_access"
     assert (await _access_state(factory, NEW)).last_error
     assert await _alerts(factory) == {}
+
+
+# --- cloud scoping (M3: one pass per connector) -----------------------------------------
+
+
+class GcpStub(StubConnector):
+    name = "stub_gcp"
+    cloud = "gcp"
+
+
+async def _add_cloud(factory, tenant_id, cloud: str, account_id: str, status: str) -> None:
+    async with factory() as s:
+        s.add(
+            CloudAccountRow(
+                tenant_id=tenant_id,
+                cloud=cloud,
+                account_id=account_id,
+                name=account_id,
+                tracked=True,
+                access_status=status,
+            )
+        )
+        await s.commit()
+
+
+async def test_discovery_only_touches_connector_cloud(factory, settings, tenant_id):
+    conn = GcpStub(
+        [
+            CloudAccount(cloud="gcp", account_id="ai-proj", name="AI", has_ai_resources=True),
+            # A stray account from another cloud is ignored by the GCP pass.
+            _account(NEW, "azure-sub"),
+        ]
+    )
+    assert await run_discovery(factory, conn, settings) == ["ai-proj"]
+    rows = await _accounts(factory)
+    assert set(rows) == {"ai-proj"} and rows["ai-proj"].cloud == "gcp"
+    alert = (await _alerts(factory))[("new_subscription", "ai-proj")]
+    assert alert.message == "New project with AI resources found: AI"
+
+
+async def test_access_check_only_touches_connector_cloud(factory, settings, tenant_id):
+    await _add_cloud(factory, tenant_id, "azure", NEW, "waiting_for_access")
+    await _add_cloud(factory, tenant_id, "gcp", "gcp-wait", "waiting_for_access")
+    await _add_cloud(factory, tenant_id, "gcp", "gcp-live", "connected")
+    conn = GcpStub()
+    conn.access["gcp-live"] = False
+    checked: list[str] = []
+    original = conn.check_access
+
+    async def spy(account_id: str) -> bool:
+        checked.append(account_id)
+        return await original(account_id)
+
+    conn.check_access = spy
+
+    assert await check_pending_access(factory, conn, settings) == ["gcp-wait"]
+    assert sorted(checked) == ["gcp-live", "gcp-wait"]
+    rows = await _accounts(factory)
+    assert rows[NEW].access_status == "waiting_for_access"  # Azure row untouched
+    assert rows["gcp-wait"].access_status == "connected"
+    assert rows["gcp-live"].access_status == "no_access"
+    alert = (await _alerts(factory))[("access_lost", "gcp-live")]
+    assert alert.message == "Lost access to gcp-live: re-grant the Read-only roles"
+
+
+async def test_gcp_waiting_error_text(factory, settings, tenant_id):
+    await _add_cloud(factory, tenant_id, "gcp", "gcp-wait", "waiting_for_access")
+    conn = GcpStub()
+    conn.access["gcp-wait"] = False
+    assert await check_pending_access(factory, conn, settings) == []
+    assert (
+        await _access_state(factory, "gcp-wait")
+    ).last_error == "Read-only roles not granted yet"
+
+
+async def test_connector_without_cloud_checks_every_cloud(factory, settings, tenant_id):
+    await _add_cloud(factory, tenant_id, "azure", NEW, "waiting_for_access")
+    await _add_cloud(factory, tenant_id, "gcp", "gcp-wait", "waiting_for_access")
+    assert sorted(await check_pending_access(factory, StubConnector(), settings)) == sorted(
+        [NEW, "gcp-wait"]
+    )

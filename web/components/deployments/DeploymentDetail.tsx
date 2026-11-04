@@ -5,6 +5,8 @@ import { useMemo, useState } from "react";
 import { lastNDays, shownCost, type Deployment, type DeploymentDailyRow } from "@/lib/api";
 import { formatCount, formatDay, formatMoney } from "@/lib/format";
 import { useSession } from "../AuthProvider";
+import { CloudBadge } from "../CloudBadge";
+import { accountNoun } from "../CloudFilter";
 import { ExportButton } from "../ExportButton";
 import { DailyCostChart } from "../DailyCostChart";
 import { RateChart, type RatePoint } from "../RateChart";
@@ -24,7 +26,7 @@ import {
 } from "../ui";
 import { TagChips } from "./TagChips";
 
-// /deployments/{id}/daily has no currency field; v1 subscriptions bill in one currency.
+// /deployments/{id}/daily has no currency field; amounts are in the reporting currency (USD default).
 const CURRENCY = "USD";
 const COST_SERIES: Series[] = [{ key: "cost", label: "Cost", color: "var(--series-1)" }];
 
@@ -51,6 +53,7 @@ export function DeploymentDetail({ id }: { id: string }) {
           </h1>
           {state.status === "ready" && (
             <p className={styles.subtitle}>
+              <CloudBadge cloud={state.data.deployment.cloud} />{" "}
               {[state.data.deployment.model, state.data.deployment.account_name]
                 .filter(Boolean)
                 .join(" · ")}
@@ -86,7 +89,13 @@ export function DeploymentDetail({ id }: { id: string }) {
 }
 
 function Facts({ d }: { d: Deployment }) {
-  const resource = d.resource_id.split("/").filter(Boolean).pop() ?? d.resource_id;
+  const parts = d.resource_id.split("/").filter(Boolean);
+  // GCP ids end in projects/<project>/locations/<location>; show both, Azure shows the resource name.
+  const resource =
+    d.cloud === "gcp" && parts.length >= 4
+      ? `${parts[parts.length - 3]}/${parts[parts.length - 1]}`
+      : (parts.pop() ?? d.resource_id);
+  const account = accountNoun(d.cloud);
   return (
     <section className={styles.panel} aria-label="Deployment details">
       <dl className={styles.dl}>
@@ -94,7 +103,11 @@ function Facts({ d }: { d: Deployment }) {
         <Fact label="Version" value={d.model_version} />
         <Fact label="SKU" value={d.sku && (d.capacity != null ? `${d.sku} × ${d.capacity}` : d.sku)} />
         <Fact label="Region" value={d.region} />
-        <Fact label="Subscription" value={d.account_name || d.account_id} title={d.account_id} />
+        <Fact
+          label={account.charAt(0).toUpperCase() + account.slice(1)}
+          value={d.account_name || d.account_id}
+          title={d.account_id}
+        />
         <Fact label="Resource" value={resource} title={d.resource_id} />
         <div style={{ gridColumn: "1 / -1" }}>
           <dt>Tags</dt>

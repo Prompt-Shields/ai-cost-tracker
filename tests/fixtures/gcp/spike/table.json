@@ -1,0 +1,17 @@
+{
+  "id": "billing-proj:billing_ds.gcp_billing_export_resource_v1_01A2B3_C4D5E6_F7A8B9",
+  "timePartitioning": {"type": "DAY"},
+  "schema": {"fields": [
+    {"name": "billing_account_id", "type": "STRING"},
+    {"name": "service", "type": "RECORD", "fields": [{"name": "id"}, {"name": "description"}]},
+    {"name": "sku", "type": "RECORD", "fields": [{"name": "id"}, {"name": "description"}]},
+    {"name": "usage_start_time", "type": "TIMESTAMP"},
+    {"name": "project", "type": "RECORD", "fields": [{"name": "id"}, {"name": "name"}]},
+    {"name": "location", "type": "RECORD", "fields": [{"name": "location"}, {"name": "region"}]},
+    {"name": "cost", "type": "FLOAT"},
+    {"name": "currency", "type": "STRING"},
+    {"name": "usage", "type": "RECORD", "fields": [{"name": "amount_in_pricing_units"}]},
+    {"name": "credits", "type": "RECORD", "fields": [{"name": "amount"}]},
+    {"name": "cost_type", "type": "STRING"}
+  ]}
+}

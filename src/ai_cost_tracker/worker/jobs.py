@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from ai_cost_tracker import ingest, sync_state
 from ai_cost_tracker.config import Settings, get_settings
-from ai_cost_tracker.connectors import Connector, get_connector
+from ai_cost_tracker.connectors import Connector, get_connector_for, get_connectors
 from ai_cost_tracker.core.models import Deployment
 from ai_cost_tracker.db.models import (
     CloudAccountRow,
@@ -200,23 +200,33 @@ def _deployment(r: DeploymentRow) -> Deployment:
     )
 
 
-async def _any_account(session_factory: SessionFactory, tenant_id: uuid.UUID) -> bool:
+async def _any_account(
+    session_factory: SessionFactory, tenant_id: uuid.UUID, cloud: str | None = None
+) -> bool:
+    where = [CloudAccountRow.tenant_id == tenant_id]
+    if cloud is not None:
+        where.append(CloudAccountRow.cloud == cloud)
     async with session_factory() as session:
-        return (
-            await session.scalar(
-                select(CloudAccountRow.id).where(CloudAccountRow.tenant_id == tenant_id).limit(1)
-            )
-        ) is not None
+        return (await session.scalar(select(CloudAccountRow.id).where(*where).limit(1))) is not None
 
 
 async def _accounts_or_sync(
     session_factory: SessionFactory, connector: Connector, settings: Settings
 ) -> tuple[uuid.UUID, list[TrackedAccount]]:
-    """Use the stored inventory; sync once if nothing has been synced yet (fresh install)."""
+    """Use the stored inventory; sync once if nothing has been synced yet (fresh install).
+
+    Only the connector's own cloud: each cloud has its own connector and pass.
+    """
     tenant_id = await _tenant_id(session_factory, settings)
-    if not await _any_account(session_factory, tenant_id):
+    cloud = _cloud(connector)
+    if not await _any_account(session_factory, tenant_id, cloud):
         await _try_inventory(session_factory, connector, settings)
-    return tenant_id, await _tracked_accounts(session_factory, tenant_id)
+    return tenant_id, await _tracked_accounts(session_factory, tenant_id, cloud)
+
+
+def _cloud(connector: Connector) -> str | None:
+    """The connector's cloud; None (every cloud) for test doubles that don't declare one."""
+    return getattr(connector, "cloud", None)
 
 
 # --- sync_state helpers ----------------------------------------------------------------
@@ -305,10 +315,11 @@ async def run_inventory(
         async with session_factory() as session:
             inventory = await ingest.sync_inventory(session, tenant_id, connector)
     except Exception as exc:
-        for acct in await _tracked_accounts(session_factory, tenant_id):
+        for acct in await _tracked_accounts(session_factory, tenant_id, _cloud(connector)):
             await _record_error(session_factory, tenant_id, acct, "inventory", exc)
         raise
-    for acct in await _tracked_accounts(session_factory, tenant_id):
+    # Only this connector's cloud: another cloud's accounts are never in its inventory.
+    for acct in await _tracked_accounts(session_factory, tenant_id, _cloud(connector)):
         if acct.account_id in inventory:
             async with session_factory() as session:
                 await _record_ok(session, tenant_id, acct, "inventory")
@@ -493,15 +504,59 @@ async def run_reconcile(
         return None
 
 
-async def run_price_sync(session_factory: SessionFactory) -> int | None:
+async def run_price_sync(
+    session_factory: SessionFactory, settings: Settings | None = None
+) -> int | None:
+    """Azure retail prices, then Vertex AI catalog prices when the GCP connector is on.
+
+    Each source is independent: one failing (e.g. GCP not set up yet) never blocks the other.
+    """
+    total: int | None = None
     try:
         from ai_cost_tracker.pricing.retail import sync_prices
-    except ImportError:
-        log.warning("ai_cost_tracker.pricing.retail not available; skipping price sync")
+
+        async with session_factory() as session:
+            total = await sync_prices(session)
+        log.info("prices: %d Azure rows", total)
+    except Exception:
+        log.exception("Azure price sync failed")
+    if settings is not None and settings.connector != "fake" and settings.gcp_enabled:
+        try:
+            from ai_cost_tracker.connectors.gcp import client_from_settings
+            from ai_cost_tracker.pricing.gcp_catalog import sync_gcp_prices
+
+            client = client_from_settings(settings)
+            try:
+                async with session_factory() as session:
+                    count = await sync_gcp_prices(session, client)
+            finally:
+                await client.aclose()
+            log.info("prices: %d GCP rows", count)
+            total = (total or 0) + count
+        except Exception:
+            log.exception("GCP price sync failed")
+    return total
+
+
+async def run_fx_sync(
+    session_factory: SessionFactory, settings: Settings | None = None
+) -> int | None:
+    """Daily ECB reference rates for converting other billing currencies (``fx.py``).
+
+    Skipped with the fake connector: its demo GCP project bills at a fixed demo rate
+    (``seed-demo``), and real rates would overwrite it and raise false variance alerts.
+    """
+    if settings is not None and settings.connector == "fake":
         return None
-    async with session_factory() as session:
-        count = await sync_prices(session)
-    log.info("prices: %d rows", count)
+    try:
+        from ai_cost_tracker.fx import sync_fx_rates
+
+        async with session_factory() as session:
+            count = await sync_fx_rates(session)
+    except Exception:
+        log.exception("FX rate sync failed")
+        return None
+    log.info("fx: %d rows", count)
     return count
 
 
@@ -538,7 +593,13 @@ async def run_access_check(
             if enqueue is not None:
                 await enqueue(account_id)
             else:
-                await run_account_backfill(session_factory, connector, settings, account_id)
+                await run_account_backfill(
+                    session_factory,
+                    connector,
+                    settings,
+                    account_id,
+                    cloud=_cloud(connector) or "azure",
+                )
         except Exception:
             log.exception("could not start backfill for %s", account_id)
     return connected
@@ -767,62 +828,106 @@ def _count(inventory: dict[str, list[Deployment]]) -> int:
     return sum(len(d) for d in inventory.values())
 
 
-def _deps() -> tuple[SessionFactory, Connector, Settings]:
+def _each_cloud() -> list[tuple[SessionFactory, Connector, Settings]]:
+    """``(session_factory, connector, settings)`` per enabled cloud, primary first."""
     settings = get_settings()
-    return get_sessionmaker(), get_connector(settings), settings
+    factory = get_sessionmaker()
+    return [(factory, c, settings) for c in get_connectors(settings)]
+
+
+async def _per_cloud(
+    run: Callable[[SessionFactory, Connector, Settings], Awaitable[Any]],
+) -> list[Any]:
+    """Run a pass once per cloud; one cloud failing is logged and doesn't stop the others."""
+    results = []
+    for deps in _each_cloud():
+        try:
+            results.append(await run(*deps))
+        except Exception:
+            log.exception("%s pass failed", deps[1].cloud)
+    return results
+
+
+def _sum(results: list[Any]) -> dict[str, Any]:
+    return {
+        "rows": sum(r.rows for r in results),
+        "failed": [a for r in results for a in r.failed],
+    }
 
 
 # --- arq entry points. Results are kept small and picklable. ---------------------------
 
 
 async def sync_inventory_job(ctx: dict[str, Any]) -> dict[str, int]:
-    inventory = await run_inventory(*_deps())
-    return {"accounts": len(inventory), "deployments": _count(inventory)}
+    found = await _per_cloud(run_inventory)
+    return {
+        "accounts": sum(len(i) for i in found),
+        "deployments": sum(_count(i) for i in found),
+    }
 
 
 async def ingest_usage_job(ctx: dict[str, Any]) -> dict[str, Any]:
-    result = await run_usage(*_deps())
-    return {"rows": result.rows, "failed": result.failed}
+    return _sum(await _per_cloud(run_usage))
 
 
 async def ingest_cost_job(ctx: dict[str, Any]) -> dict[str, Any]:
-    result = await run_cost(*_deps(), jitter_seconds=COST_JITTER_SECONDS)
-    return {"rows": result.rows, "failed": result.failed}
+    async def run(*deps: Any) -> PassResult:
+        return await run_cost(*deps, jitter_seconds=COST_JITTER_SECONDS)
+
+    return _sum(await _per_cloud(run))
 
 
 async def backfill_job(ctx: dict[str, Any], days: int) -> dict[str, Any]:
-    result = await run_backfill(*_deps(), days)
-    return {"rows": result.rows, "failed": result.failed}
+    async def run(*deps: Any) -> PassResult:
+        return await run_backfill(*deps, days)
+
+    return _sum(await _per_cloud(run))
 
 
 async def backfill_account_job(
     ctx: dict[str, Any], account_id: str, cloud: str = "azure"
 ) -> dict[str, Any]:
-    result = await run_account_backfill(*_deps(), account_id, cloud=cloud)
+    settings = get_settings()
+    connector = get_connector_for(settings, cloud)
+    result = await run_account_backfill(
+        get_sessionmaker(), connector, settings, account_id, cloud=cloud
+    )
     return {"rows": result.rows, "failed": result.failed}
 
 
 async def sync_prices_job(ctx: dict[str, Any]) -> dict[str, Any]:
-    return {"prices": await run_price_sync(get_sessionmaker())}
+    return {"prices": await run_price_sync(get_sessionmaker(), get_settings())}
+
+
+async def sync_fx_job(ctx: dict[str, Any]) -> dict[str, Any]:
+    return {"fx": await run_fx_sync(get_sessionmaker(), get_settings())}
 
 
 async def discovery_job(ctx: dict[str, Any]) -> dict[str, Any]:
-    await run_discovery_pass(*_deps())
+    await _per_cloud(run_discovery_pass)
     return {}
 
 
 async def check_access_job(ctx: dict[str, Any]) -> dict[str, Any]:
     redis = ctx.get("redis")
+    connected: list[str] = []
+    for factory, connector, settings in _each_cloud():
+        cloud = connector.cloud
 
-    async def enqueue(account_id: str) -> None:
-        await redis.enqueue_job(
-            "backfill_account_job",
-            account_id,
-            "azure",
-            _job_id=backfill_job_id("azure", account_id),
-        )
+        async def enqueue(account_id: str, cloud: str = cloud) -> None:
+            await redis.enqueue_job(
+                "backfill_account_job",
+                account_id,
+                cloud,
+                _job_id=backfill_job_id(cloud, account_id),
+            )
 
-    connected = await run_access_check(*_deps(), enqueue=enqueue if redis is not None else None)
+        try:
+            connected += await run_access_check(
+                factory, connector, settings, enqueue=enqueue if redis is not None else None
+            )
+        except Exception:
+            log.exception("%s access check failed", cloud)
     return {"connected": connected}
 
 

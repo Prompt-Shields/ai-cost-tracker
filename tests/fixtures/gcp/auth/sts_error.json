@@ -1,0 +1,4 @@
+{
+  "error": "invalid_grant",
+  "error_description": "The audience in ID Token [api://AzureADTokenExchange] does not match the expected audience."
+}

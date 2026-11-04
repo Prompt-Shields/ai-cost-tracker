@@ -1,0 +1,7 @@
+{
+  "_comment": "Shape from Google's public STS REST docs (v1/token); values are fakes.",
+  "access_token": "ya29.fake-federated-token",
+  "issued_token_type": "urn:ietf:params:oauth:token-type:access_token",
+  "token_type": "Bearer",
+  "expires_in": 3599
+}

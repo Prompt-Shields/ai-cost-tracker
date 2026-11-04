@@ -258,3 +258,9 @@ Not yet confirmed against a live subscription (tracked in issue #2):
   is why a managed Redis was chosen.
 - Basic C0 Azure Cache for Redis can still be created in the target subscription (see the
   retirement note above).
+
+## Google Cloud (optional)
+
+To track Vertex AI spend next to Azure, follow [gcp-setup.md](gcp-setup.md): a one-time
+Workload Identity Federation setup (no keys), then set the `ACT_GCP_*` repository variables
+the deploy workflow passes to the containers.

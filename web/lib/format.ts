@@ -23,3 +23,26 @@ export function formatDay(day: string): string {
     timeZone: "UTC",
   });
 }
+
+/** 0.4213 -> "42%"; shares under 1% say "<1%" so a small cloud never reads as zero. */
+export function formatShare(fraction: number): string {
+  if (!Number.isFinite(fraction) || fraction <= 0) return "0%";
+  if (fraction < 0.01) return "<1%";
+  return new Intl.NumberFormat("en-US", { style: "percent", maximumFractionDigits: 0 }).format(
+    fraction,
+  );
+}
+
+/** "USD" -> "$", "EUR" -> "€": for column headers like "$/1M tokens" in any reporting currency. */
+export function currencySymbol(currency: string): string {
+  try {
+    const parts = new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency,
+      currencyDisplay: "narrowSymbol",
+    }).formatToParts(0);
+    return parts.find((p) => p.type === "currency")?.value ?? currency;
+  } catch {
+    return currency;
+  }
+}

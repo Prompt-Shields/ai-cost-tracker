@@ -1,0 +1,95 @@
+{
+  "timeSeries": [
+    {
+      "metric": {
+        "type": "aiplatform.googleapis.com/publisher/online_serving/model_invocation_count",
+        "labels": {}
+      },
+      "resource": {
+        "type": "aiplatform.googleapis.com/PublisherModel",
+        "labels": {
+          "resource_container": "123456789012",
+          "location": "us-central1",
+          "model_user_id": "gemini-2.5-flash"
+        }
+      },
+      "metricKind": "DELTA",
+      "valueType": "INT64",
+      "points": [
+        {
+          "interval": {
+            "startTime": "2025-03-08T21:00:00Z",
+            "endTime": "2025-03-08T22:00:00Z"
+          },
+          "value": {
+            "int64Value": "4"
+          }
+        },
+        {
+          "interval": {
+            "startTime": "2025-03-08T20:00:00Z",
+            "endTime": "2025-03-08T21:00:00Z"
+          },
+          "value": {
+            "int64Value": "6"
+          }
+        }
+      ]
+    },
+    {
+      "metric": {
+        "type": "aiplatform.googleapis.com/publisher/online_serving/model_invocation_count",
+        "labels": {}
+      },
+      "resource": {
+        "type": "aiplatform.googleapis.com/PublisherModel",
+        "labels": {
+          "resource_container": "123456789012",
+          "location": "global",
+          "model_user_id": "gemini-2.5-pro"
+        }
+      },
+      "metricKind": "DELTA",
+      "valueType": "INT64",
+      "points": [
+        {
+          "interval": {
+            "startTime": "2025-03-08T22:00:00Z",
+            "endTime": "2025-03-08T23:00:00Z"
+          },
+          "value": {
+            "int64Value": "3"
+          }
+        }
+      ]
+    },
+    {
+      "metric": {
+        "type": "aiplatform.googleapis.com/publisher/online_serving/model_invocation_count",
+        "labels": {}
+      },
+      "resource": {
+        "type": "aiplatform.googleapis.com/PublisherModel",
+        "labels": {
+          "resource_container": "123456789012",
+          "location": "europe-west4",
+          "model_user_id": "gemini-2.0-flash-001"
+        }
+      },
+      "metricKind": "DELTA",
+      "valueType": "INT64",
+      "points": [
+        {
+          "interval": {
+            "startTime": "2025-03-08T23:00:00Z",
+            "endTime": "2025-03-09T00:00:00Z"
+          },
+          "value": {
+            "int64Value": "1"
+          }
+        }
+      ]
+    }
+  ],
+  "unit": "1"
+}
