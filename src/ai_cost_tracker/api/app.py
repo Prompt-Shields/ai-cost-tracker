@@ -18,6 +18,7 @@ from ai_cost_tracker.api.routes import (
     connections,
     costs,
     exports,
+    gcp_connect,
     health,
     inventory,
     invoices,
@@ -62,6 +63,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     for module in (me, inventory, costs):
         app.include_router(module.router, prefix=API_PREFIX)
     app.include_router(azure_connect.router, prefix=API_PREFIX)
+    app.include_router(gcp_connect.router, prefix=API_PREFIX)
     app.include_router(connections.router, prefix=API_PREFIX)
     app.include_router(admin.router, prefix=API_PREFIX)
     for module in (
