@@ -1,9 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { shownCost, yesterday, type ApiClient, type DayStatus, type Deployment } from "@/lib/api";
-import { formatCount, formatDay, formatMoney } from "@/lib/format";
+import {
+  shownCost,
+  yesterday,
+  type ApiClient,
+  type Cloud,
+  type DayStatus,
+  type Deployment,
+} from "@/lib/api";
+import { currencySymbol, formatCount, formatDay, formatMoney } from "@/lib/format";
 import { useSession } from "./AuthProvider";
+import { CloudBadge, cloudLabel } from "./CloudBadge";
+import { cloudQuery, type CloudChoice } from "./CloudFilter";
 import { ExportButton } from "./ExportButton";
 import { EmptyNotice, ErrorNotice, Skeleton, ui as styles, useLoad } from "./ui";
 
@@ -28,8 +37,8 @@ const CONCURRENCY = 6;
  * endpoint instead of grouping /costs/daily by deployment, so cost, tokens and the deployment
  * id (for the link) come from one place. A batch endpoint would replace this if lists grow.
  */
-async function loadYesterday(api: ApiClient, day: string): Promise<Result> {
-  const deployments = await api.deployments();
+async function loadYesterday(api: ApiClient, day: string, cloud?: Cloud): Promise<Result> {
+  const deployments = await api.deployments(cloud ? { cloud } : {});
   const rows: Row[] = new Array(deployments.length);
   let next = 0;
   const worker = async () => {
@@ -50,21 +59,38 @@ async function loadYesterday(api: ApiClient, day: string): Promise<Result> {
   };
   await Promise.all(Array.from({ length: Math.min(CONCURRENCY, deployments.length) }, worker));
   rows.sort((a, b) => b.cost - a.cost || b.tokens - a.tokens || a.deployment.name.localeCompare(b.deployment.name));
-  // /deployments/{id}/daily carries no currency; v1 subscriptions all bill in one, as /summary does.
+  // /deployments/{id}/daily carries no currency; it is the reporting currency, as /summary says.
   return { currency: "USD", rows };
 }
 
 /** Answers "what did each deployment cost yesterday?" (issue #23's done criterion). */
-export function YesterdayByDeployment({ currency: currencyHint }: { currency?: string }) {
+export function YesterdayByDeployment({
+  currency: currencyHint,
+  cloud = "all",
+  showCloud = false,
+  cloudName = "azure",
+}: {
+  currency?: string;
+  /** Overview's cloud filter; applied to the deployment list and the export. */
+  cloud?: CloudChoice;
+  /** Badge each row with its cloud (unfiltered multi-cloud view). */
+  showCloud?: boolean;
+  /** The one cloud in view, if any, for the empty state's wording. */
+  cloudName?: string | null;
+}) {
   const { api } = useSession();
   const day = yesterday().start;
-  const [state, retry] = useLoad(() => loadYesterday(api, day), day);
+  const filter = cloudQuery(cloud);
+  const [state, retry] = useLoad(() => loadYesterday(api, day, filter.cloud), `${day}|${cloud}`);
 
   return (
     <section className={styles.panel}>
       <div className={styles.panelHead}>
         <h2 className={styles.panelTitle}>Yesterday by deployment</h2>
-        <ExportButton name="costs-daily" query={{ start: day, end: day, group_by: "deployment" }} />
+        <ExportButton
+          name="costs-daily"
+          query={{ start: day, end: day, group_by: "deployment", ...filter }}
+        />
       </div>
       <p className={styles.panelSub} style={{ marginTop: -4 }}>{formatDay(day)} (UTC day, as billed)</p>
       {state.status === "loading" && <Skeleton height={200} label="Loading yesterday's cost…" />}
@@ -73,20 +99,28 @@ export function YesterdayByDeployment({ currency: currencyHint }: { currency?: s
       )}
       {state.status === "ready" && state.data.rows.length === 0 && (
         <EmptyNotice title="No deployments yet">
-          Connect an Azure subscription and its AI deployments will be listed here.{" "}
-          <Link className={styles.link} href="/connect">
-            Connect Azure
+          {cloudName === "gcp"
+            ? "Connect a Google Cloud project and its Vertex AI models will be listed here. "
+            : cloudName === "azure"
+              ? "Connect an Azure subscription and its AI deployments will be listed here. "
+              : "Connect a cloud account and its AI deployments will be listed here. "}
+          <Link className={styles.link} href={cloudName === "gcp" ? "/connect/gcp" : "/connect"}>
+            {cloudName ? `Connect ${cloudLabel(cloudName)}` : "Connect a cloud"}
           </Link>
         </EmptyNotice>
       )}
       {state.status === "ready" && state.data.rows.length > 0 && (
-        <Table rows={state.data.rows} currency={currencyHint ?? state.data.currency} />
+        <Table
+          rows={state.data.rows}
+          currency={currencyHint ?? state.data.currency}
+          showCloud={showCloud}
+        />
       )}
     </section>
   );
 }
 
-function Table({ rows, currency }: { rows: Row[]; currency: string }) {
+function Table({ rows, currency, showCloud }: { rows: Row[]; currency: string; showCloud: boolean }) {
   const totalCost = rows.reduce((s, r) => s + r.cost, 0);
   const totalTokens = rows.reduce((s, r) => s + r.tokens, 0);
   const anyEstimated = rows.some((r) => r.status === "estimated");
@@ -100,7 +134,7 @@ function Table({ rows, currency }: { rows: Row[]; currency: string }) {
             <th scope="col">Deployment · model</th>
             <th scope="col" className={styles.num}>Cost</th>
             <th scope="col" className={styles.num}>Tokens</th>
-            <th scope="col" className={styles.num}>$/1M tokens</th>
+            <th scope="col" className={styles.num}>{currencySymbol(currency)}/1M tokens</th>
           </tr>
         </thead>
         <tbody>
@@ -110,7 +144,14 @@ function Table({ rows, currency }: { rows: Row[]; currency: string }) {
                 <Link className={styles.link} href={`/deployments/${encodeURIComponent(r.deployment.id)}`}>
                   {r.deployment.name}
                 </Link>
-                <div className={styles.cellSub}>{r.deployment.model ?? "—"}</div>
+                <div className={styles.cellSub}>
+                  {showCloud && (
+                    <>
+                      <CloudBadge cloud={r.deployment.cloud} />{" "}
+                    </>
+                  )}
+                  {r.deployment.model ?? "—"}
+                </div>
               </th>
               <td className={styles.num}>
                 {r.status === "estimated" && <span className={styles.badge}>estimated</span>}
@@ -138,7 +179,7 @@ function Table({ rows, currency }: { rows: Row[]; currency: string }) {
       </table>
       {anyEstimated && (
         <p className={styles.muted} style={{ fontSize: 13, marginTop: 8 }}>
-          “estimated” rows are not billed yet; Azure billing lags 24–72 hours.
+          “estimated” rows are not billed yet; cloud billing lags 24–72 hours.
         </p>
       )}
     </div>

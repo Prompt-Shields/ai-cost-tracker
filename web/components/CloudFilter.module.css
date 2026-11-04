@@ -1,0 +1,40 @@
+/* Lets a wide segmented control scroll inside its panel instead of widening the page. */
+.scrollX {
+  box-sizing: border-box;
+  max-width: calc(100% + 6px);
+  overflow-x: auto;
+  scrollbar-width: thin;
+  /* Room for the buttons' focus ring, which overflow would otherwise clip. */
+  padding: 3px;
+  margin: -3px;
+}
+
+.scrollX > * {
+  flex: none;
+}
+
+/* One line under the page toolbar: reporting currency and any approximate exchange rate. */
+.currencyNote {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  margin: -8px 0 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.approx {
+  color: var(--text-secondary);
+}
+
+.approxMark {
+  font-weight: 600;
+  margin-right: 4px;
+}
+
+/* Added to a `.controls` row so it can shrink below its content and let `.scrollX` scroll. */
+.shrink {
+  min-width: 0;
+  max-width: 100%;
+}

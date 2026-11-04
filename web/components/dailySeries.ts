@@ -26,6 +26,8 @@ export function pivotGrouped(
   rows: DailyGroupRow[],
   days: string[],
   labelFor: (key: string) => string = (k) => k,
+  /** Fixed colour for a key (e.g. one hue per cloud); falls back to the ranked slot colour. */
+  colorFor: (key: string) => string | undefined = () => undefined,
 ): { series: Series[]; points: DailyPoint[] } {
   const totals = new Map<string, number>();
   for (const r of rows) totals.set(r.key, (totals.get(r.key) ?? 0) + shownCost(r));
@@ -36,7 +38,7 @@ export function pivotGrouped(
   const series: Series[] = named.map((key, i) => ({
     key,
     label: labelFor(key),
-    color: `var(--series-${i + 1})`,
+    color: colorFor(key) ?? `var(--series-${i + 1})`,
   }));
   if (hasOther) series.push({ key: OTHER_KEY, label: "Other", color: "var(--series-other)" });
 

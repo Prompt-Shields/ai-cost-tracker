@@ -18,19 +18,30 @@ export interface Me {
 /** estimated: no billed cost yet (show estimated_cost); billed: may still be restated; finalised: closed. */
 export type DayStatus = "estimated" | "billed" | "finalised";
 
-/** `account` is a subscription on Azure; `tag:<key>` groups by that tag's value. */
-export type GroupBy = "model" | "deployment" | "account" | `tag:${string}`;
+/** Clouds the API can report. `cloud` fields elsewhere stay `string` so a new cloud never breaks parsing. */
+export type Cloud = "azure" | "gcp" | "aws";
+
+/**
+ * `account` is a subscription on Azure and a project on Google Cloud; `cloud` puts each cloud
+ * in its own series; `tag:<key>` groups by that tag's value.
+ */
+export type GroupBy = "model" | "deployment" | "account" | "cloud" | `tag:${string}`;
 
 export interface DailyGroupRow {
   day: string; // YYYY-MM-DD
-  key: string; // model / deployment / account id / tag value, per group_by
+  key: string; // model / deployment / account id / cloud / tag value, per group_by
   billed_cost: string;
   estimated_cost: string;
   day_status: DayStatus;
 }
 
+/**
+ * Money is in the reporting currency: the API converts each cloud's billed currency per day.
+ * `fx_approximate` is true when any amount used a stale (> 7 days) or missing exchange rate.
+ */
 export interface DailyCosts {
   currency: string;
+  fx_approximate: boolean;
   rows: DailyGroupRow[];
 }
 
@@ -45,12 +56,34 @@ export interface ModelSummary {
   cost_per_1m_output: string | null;
 }
 
+/** One cloud's share of the range; `total_cost` is billed where billed, estimated otherwise. */
+export interface CloudSummary {
+  cloud: string;
+  billed_cost: string;
+  estimated_cost: string;
+  total_cost: string;
+  input_tokens: number;
+  output_tokens: number;
+}
+
 export interface Summary {
   currency: string;
+  fx_approximate: boolean;
   total_cost: string;
   today_estimated_cost: string;
   month_to_date_cost: string;
   by_model: ModelSummary[];
+  /** Sorted by total_cost, highest first. */
+  by_cloud: CloudSummary[];
+}
+
+/** GET /clouds: clouds with at least one account, Azure first. */
+export interface CloudInfo {
+  cloud: string;
+  label: string;
+  accounts: number;
+  tracked_accounts: number;
+  deployments: number;
 }
 
 export interface Deployment {
@@ -90,6 +123,7 @@ export interface DateRange {
 
 /** Optional filters shared by /summary and /costs/daily. `tag` is "key:value". */
 export interface CostFilters {
+  cloud?: Cloud;
   account_id?: string;
   model?: string;
   tag?: string;
@@ -184,8 +218,12 @@ export class ApiClient {
     });
   }
 
-  deployments(): Promise<Deployment[]> {
-    return this.request("/api/v1/deployments");
+  deployments(filters: { cloud?: Cloud } = {}): Promise<Deployment[]> {
+    return this.request("/api/v1/deployments", { query: { ...filters } });
+  }
+
+  clouds(): Promise<CloudInfo[]> {
+    return this.request("/api/v1/clouds");
   }
 
   deploymentDaily(id: string, range: DateRange): Promise<DeploymentDaily> {
