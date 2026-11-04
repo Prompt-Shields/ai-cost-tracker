@@ -17,7 +17,16 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from ai_cost_tracker import audit
 from ai_cost_tracker.api import queries as q
 from ai_cost_tracker.api.auth import Principal, get_principal
-from ai_cost_tracker.api.deps import CostFilters, Range, SessionDep, TenantId, Today, money
+from ai_cost_tracker.api.deps import (
+    Cloud,
+    CostFilters,
+    Range,
+    SessionDep,
+    SettingsDep,
+    TenantId,
+    Today,
+    money,
+)
 from ai_cost_tracker.api.routes import costs, inventory
 
 router = APIRouter(tags=["exports"])
@@ -80,10 +89,16 @@ async def costs_daily_csv(
     tenant_id: TenantId,
     filters: CostFilters,
     principal: Caller,
+    settings: SettingsDep,
     group_by: costs.GroupBy = "model",
 ) -> Response:
     data = await costs.costs_daily(
-        rng=rng, session=session, tenant_id=tenant_id, filters=filters, group_by=group_by
+        rng=rng,
+        session=session,
+        tenant_id=tenant_id,
+        filters=filters,
+        settings=settings,
+        group_by=group_by,
     )
     rows = [r | {"currency": data["currency"]} for r in data["rows"]]
     cols = ["day", "key", "billed_cost", "estimated_cost", "day_status", "currency"]
@@ -94,10 +109,15 @@ async def costs_daily_csv(
 
 @router.get("/exports/usage-daily.csv")
 async def usage_daily_csv(
-    request: Request, rng: Range, session: SessionDep, tenant_id: TenantId, principal: Caller
+    request: Request,
+    rng: Range,
+    session: SessionDep,
+    tenant_id: TenantId,
+    principal: Caller,
+    cloud: Cloud = None,
 ) -> Response:
-    data = await costs.usage_daily(rng=rng, session=session, tenant_id=tenant_id)
-    cols = ["day", "deployment", "model", "input_tokens", "output_tokens", "requests"]
+    data = await costs.usage_daily(rng=rng, session=session, tenant_id=tenant_id, cloud=cloud)
+    cols = ["day", "cloud", "deployment", "model", "input_tokens", "output_tokens", "requests"]
     return await _respond(
         request, session, tenant_id, principal, "usage-daily", _csv(cols, data["rows"]), rng
     )
@@ -111,10 +131,15 @@ async def deployment_daily_csv(
     session: SessionDep,
     tenant_id: TenantId,
     principal: Caller,
+    settings: SettingsDep,
 ) -> Response:
     """The deployment page's daily table (``/deployments/{id}/daily``)."""
     data = await inventory.deployment_daily(
-        deployment_id=deployment_id, rng=rng, session=session, tenant_id=tenant_id
+        deployment_id=deployment_id,
+        rng=rng,
+        session=session,
+        tenant_id=tenant_id,
+        settings=settings,
     )
     cols = [
         "day",
@@ -132,9 +157,13 @@ async def deployment_daily_csv(
 
 @router.get("/exports/deployments.csv")
 async def deployments_csv(
-    request: Request, session: SessionDep, tenant_id: TenantId, principal: Caller
+    request: Request,
+    session: SessionDep,
+    tenant_id: TenantId,
+    principal: Caller,
+    cloud: Cloud = None,
 ) -> Response:
-    rows = await inventory.list_deployments(session=session, tenant_id=tenant_id)
+    rows = await inventory.list_deployments(session=session, tenant_id=tenant_id, cloud=cloud)
     cols = [
         "id",
         "cloud",
@@ -161,10 +190,16 @@ async def summary_csv(
     filters: CostFilters,
     today: Today,
     principal: Caller,
+    settings: SettingsDep,
 ) -> Response:
     """The by-model table; the range totals are repeated on every row for spreadsheets."""
     data = await costs.summary(
-        rng=rng, session=session, tenant_id=tenant_id, filters=filters, today=today
+        rng=rng,
+        session=session,
+        tenant_id=tenant_id,
+        filters=filters,
+        today=today,
+        settings=settings,
     )
     totals = {
         k: data[k] for k in ("currency", "total_cost", "today_estimated_cost", "month_to_date_cost")

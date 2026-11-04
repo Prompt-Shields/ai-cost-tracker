@@ -241,6 +241,7 @@ async def test_costs_daily(client, seeded):
     resp = await client.get("/api/v1/costs/daily", params=RANGE)
     assert resp.json() == {
         "currency": "USD",
+        "fx_approximate": False,
         "rows": [
             _daily("2026-10-01", "gpt-4o", "3.7500000000"),
             _daily("2026-10-01", "gpt-4o-mini", "0.1000000000"),
@@ -256,6 +257,7 @@ async def test_usage_daily_buckets_by_utc_day(client, seeded):
         "rows": [
             {
                 "day": "2026-10-01",
+                "cloud": "azure",
                 "deployment": "chat",
                 "model": "gpt-4o",
                 "input_tokens": 1000,
@@ -264,6 +266,7 @@ async def test_usage_daily_buckets_by_utc_day(client, seeded):
             },
             {
                 "day": "2026-10-02",
+                "cloud": "azure",
                 "deployment": "chat",
                 "model": "gpt-4o",
                 "input_tokens": 500000,
@@ -276,7 +279,10 @@ async def test_usage_daily_buckets_by_utc_day(client, seeded):
 
 async def test_summary(client, seeded):
     resp = await client.get("/api/v1/summary", params=RANGE)
-    assert resp.json() == {
+    body = resp.json()
+    assert body.pop("fx_approximate") is False
+    assert [c["cloud"] for c in body.pop("by_cloud")] == ["azure"]
+    assert body == {
         "currency": "USD",
         "total_cost": "6.9000000000",
         "today_estimated_cost": "0.0000000000",
@@ -323,10 +329,13 @@ async def test_missing_tenant_returns_empty(client):
     assert (await client.get("/api/v1/accounts")).json() == []
     assert (await client.get("/api/v1/costs/daily", params=RANGE)).json() == {
         "currency": "USD",
+        "fx_approximate": False,
         "rows": [],
     }
     assert (await client.get("/api/v1/summary", params=RANGE)).json() == {
         "currency": "USD",
+        "fx_approximate": False,
+        "by_cloud": [],
         "total_cost": "0.0000000000",
         "today_estimated_cost": "0.0000000000",
         "month_to_date_cost": "0.0000000000",

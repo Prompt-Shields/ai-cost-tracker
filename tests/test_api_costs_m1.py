@@ -232,6 +232,7 @@ async def _daily(client, **params) -> dict:
 async def test_daily_by_model_mixes_billed_and_estimated(client, seeded):
     assert await _daily(client) == {
         "currency": "USD",
+        "fx_approximate": False,
         "rows": [
             # sub-a finalised, sub-b billed: the row is as settled as its least settled part.
             _m("13", "gpt-4o", "12.0000000000", "12.2000000000", "billed"),
@@ -317,7 +318,10 @@ async def test_daily_filters(client, seeded, params, expected):
 
 async def test_summary(client, seeded):
     resp = await client.get("/api/v1/summary", params=RANGE)
-    assert resp.json() == {
+    body = resp.json()
+    assert body.pop("fx_approximate") is False
+    assert [c["cloud"] for c in body.pop("by_cloud")] == ["azure"]
+    assert body == {
         "currency": "USD",
         # billed 10-13 (13.5) + sub-a billed 10-14 (4) + sub-b est 10-14 (1.5) + est 10-15 (0.7)
         "total_cost": "19.7000000000",
@@ -362,7 +366,10 @@ async def test_summary(client, seeded):
 
 async def test_summary_filtered(client, seeded):
     resp = await client.get("/api/v1/summary", params=RANGE | {"account_id": "sub-b"})
-    assert resp.json() == {
+    body = resp.json()
+    assert body.pop("fx_approximate") is False
+    assert [c["cloud"] for c in body.pop("by_cloud")] == ["azure"]
+    assert body == {
         "currency": "USD",
         "total_cost": "3.5000000000",
         "today_estimated_cost": Z,

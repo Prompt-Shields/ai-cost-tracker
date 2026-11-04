@@ -1,4 +1,4 @@
-"""Shared request dependencies for the read API: tenant lookup and date-range parsing."""
+"""Shared request dependencies for the read API: tenant lookup, date range, filters."""
 
 import uuid
 from dataclasses import dataclass
@@ -64,6 +64,12 @@ def get_today() -> date:
     return datetime.now(UTC).date()
 
 
+CLOUD_PATTERN = r"^(azure|gcp|aws)$"
+Cloud = Annotated[
+    str | None, Query(description="Only this cloud: azure | gcp | aws", pattern=CLOUD_PATTERN)
+]
+
+
 def cost_filters(
     account_id: Annotated[str | None, Query(description="Subscription / account id")] = None,
     model: Annotated[str | None, Query(description='Model, or "unmapped"')] = None,
@@ -76,12 +82,13 @@ def cost_filters(
             pattern=r"^[^:]+:.*$",
         ),
     ] = None,
+    cloud: Cloud = None,
 ) -> Filters:
     parsed = None
     if tag is not None:
         key, value = tag.split(":", 1)
         parsed = (key, value)
-    return Filters(account_id=account_id, model=model, tag=parsed)
+    return Filters(account_id=account_id, model=model, tag=parsed, cloud=cloud)
 
 
 TenantId = Annotated[uuid.UUID, Depends(get_tenant_id)]
