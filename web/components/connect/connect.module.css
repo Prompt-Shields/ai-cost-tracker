@@ -566,3 +566,168 @@
     justify-content: flex-start;
   }
 }
+
+/* Long scripts scroll inside their box, never the page. */
+
+.codeBlock {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.codeTall pre {
+  max-height: 420px;
+  overflow: auto;
+}
+
+.codeTall pre:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* Cloud switcher (Azure | Google Cloud), links styled as a segmented control */
+
+.cloudSwitch {
+  display: inline-flex;
+  align-self: flex-start;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--surface-1);
+}
+
+.cloudTab,
+.cloudTabActive {
+  font-size: 14px;
+  padding: 6px 14px;
+  text-decoration: none;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.cloudTab + .cloudTab,
+.cloudTab + .cloudTabActive,
+.cloudTabActive + .cloudTab {
+  border-left: 1px solid var(--border);
+}
+
+.cloudTab:hover {
+  background: var(--wash);
+}
+
+.cloudTabActive {
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 600;
+}
+
+.cloudTab:focus-visible,
+.cloudTabActive:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* GCP onboarding */
+
+.addForm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px 12px;
+}
+
+.addForm .field {
+  flex: 1 1 260px;
+  margin-top: 0;
+}
+
+.hint {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: 4px 0 0;
+}
+
+.missingList {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+}
+
+.roleList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.roleList li {
+  display: grid;
+  grid-template-columns: minmax(0, 15rem) minmax(0, 1fr);
+  gap: 2px 16px;
+  padding: 8px 0;
+  border-top: 1px solid var(--grid);
+  font-size: 13px;
+}
+
+.roleList li:first-child {
+  border-top: 0;
+}
+
+.roleScope {
+  color: var(--text-muted);
+}
+
+.projectRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px 12px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--grid);
+}
+
+.projectMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px 8px;
+}
+
+.inlineHead {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+}
+
+@media (max-width: 720px) {
+  .roleList li,
+  .projectRow {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .projectMeta {
+    justify-content: flex-start;
+  }
+}
+
+/* Connections grouped by cloud */
+
+.cloudGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.groupTitle {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 8px 0 -4px;
+}

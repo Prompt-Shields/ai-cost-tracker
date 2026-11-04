@@ -3,6 +3,7 @@
 import { useMsal } from "@azure/msal-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ConnectApi } from "@/lib/api-connect";
+import { GcpApi } from "@/lib/api-gcp";
 import { acquireArmToken } from "@/lib/armToken";
 import { useSession } from "../AuthProvider";
 import { errorMessage } from "./format";
@@ -21,6 +22,12 @@ export function useConnectApi() {
     }),
     [instance, api],
   );
+}
+
+/** GCP onboarding client; no cloud sign-in needed, the API reaches GCP via federation. */
+export function useGcpApi(): GcpApi {
+  const { api } = useSession();
+  return useMemo(() => new GcpApi(api.getToken), [api]);
 }
 
 /** null while loading; admins and owners may connect, track and untrack. */

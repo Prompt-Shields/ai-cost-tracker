@@ -31,5 +31,5 @@ export function errorMessage(err: unknown): string {
 
 /** A fix that is a shell command gets a copy button; prose fixes are shown as text. */
 export function isCommand(text: string): boolean {
-  return /^(az|act)\s/.test(text.trim());
+  return /^(az|act|gcloud|bq)\s/.test(text.trim());
 }
