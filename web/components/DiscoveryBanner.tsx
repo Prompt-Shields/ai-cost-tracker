@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { DiscoveredAccount } from "@/lib/api-connect";
+import { CloudBadge } from "./CloudBadge";
 import { errorMessage } from "./connect/format";
 import { useConnectApi, useIsAdmin } from "./connect/hooks";
 import styles from "./DiscoveryBanner.module.css";
 
 /**
- * "N new subscriptions with AI resources found", from the daily discovery job. Renders nothing
+ * "N new subscriptions (or projects) with AI resources found", from the daily discovery job. Renders nothing
  * when there are none or the request fails: it is a nudge, not something to report errors on.
  */
 export function DiscoveryBanner({ onTracked }: { onTracked?: () => void }) {
@@ -30,10 +31,13 @@ export function DiscoveryBanner({ onTracked }: { onTracked?: () => void }) {
     };
   }, [api]);
 
-  const track = async (ids: string[]) => {
+  const track = async (accounts: DiscoveredAccount[]) => {
+    const ids = accounts.map((a) => a.account_id);
     setError(null);
     setBusy((prev) => new Set([...prev, ...ids]));
-    const results = await Promise.allSettled(ids.map((id) => api.track(id, true)));
+    const results = await Promise.allSettled(
+      accounts.map((a) => api.track(a.account_id, true, a.cloud)),
+    );
     const ok = ids.filter((_, i) => results[i].status === "fulfilled");
     const failed = results.find((r): r is PromiseRejectedResult => r.status === "rejected");
     if (failed) setError(errorMessage(failed.reason));
@@ -48,7 +52,7 @@ export function DiscoveryBanner({ onTracked }: { onTracked?: () => void }) {
     return (
       <div className={styles.banner} role="status">
         <p className={styles.title}>
-          Tracking {tracked} new subscription{tracked === 1 ? "" : "s"}. Cost history loads in the
+          Tracking {tracked} new account{tracked === 1 ? "" : "s"}. Cost history loads in the
           background; see <Link href="/connections">Connections</Link>.
         </p>
       </div>
@@ -56,18 +60,22 @@ export function DiscoveryBanner({ onTracked }: { onTracked?: () => void }) {
   }
 
   const n = items.length;
+  // "subscription" / "project" when every item is from one cloud, "account" when mixed.
+  const clouds = new Set(items.map((a) => a.cloud));
+  const noun =
+    clouds.size > 1 ? "account" : clouds.has("gcp") ? "project" : "subscription";
   return (
-    <section className={styles.banner} aria-label="Newly discovered subscriptions">
+    <section className={styles.banner} aria-label="Newly discovered accounts">
       <div className={styles.head}>
         <p className={styles.title}>
-          {n} new subscription{n === 1 ? "" : "s"} with AI resources found
+          {`${n} new ${noun}${n === 1 ? "" : "s"} with AI resources found`}
         </p>
         {isAdmin && n > 1 && (
           <button
             type="button"
             className={styles.primary}
             disabled={busy.size > 0}
-            onClick={() => void track(items.map((a) => a.account_id))}
+            onClick={() => void track(items)}
           >
             Track all
           </button>
@@ -80,7 +88,7 @@ export function DiscoveryBanner({ onTracked }: { onTracked?: () => void }) {
         {items.map((a) => (
           <li key={a.account_id} className={styles.item}>
             <span className={styles.name}>
-              {a.name ?? a.account_id}
+              <CloudBadge cloud={a.cloud} /> {a.name ?? a.account_id}
               {a.name && <span className={styles.id}>{a.account_id}</span>}
             </span>
             {isAdmin && (
@@ -88,7 +96,7 @@ export function DiscoveryBanner({ onTracked }: { onTracked?: () => void }) {
                 type="button"
                 className={styles.secondary}
                 disabled={busy.has(a.account_id)}
-                onClick={() => void track([a.account_id])}
+                onClick={() => void track([a])}
               >
                 {busy.has(a.account_id) ? "Tracking…" : "Track"}
               </button>

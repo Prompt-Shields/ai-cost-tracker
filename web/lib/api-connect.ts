@@ -61,6 +61,7 @@ export interface Connection {
 
 export interface DiscoveredAccount {
   account_id: string;
+  cloud: string;
   name: string | null;
   discovered_at: string;
 }
