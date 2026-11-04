@@ -7,6 +7,12 @@ which resolves itself once a later run (fresh prices, late billing rows) closes 
 Billed cost includes every meter parsed to the model (training/hosting too); meters the
 parser doesn't know land in model "unmapped". Those get no variance alert because there is
 nothing to estimate them from, and unmapped meters are surfaced separately.
+
+Estimates are priced in USD, but an account can be billed in another currency (a GCP project
+billed in EUR). Every amount for a (cloud, account, day) is therefore converted into that
+day's billing currency before comparing, so a currency difference never reads as variance.
+Days without billed rows keep the estimate's own currency. When no FX rate exists at all the
+comparison is meaningless, so no variance alert is raised or resolved for that key.
 """
 
 import uuid
@@ -18,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ai_cost_tracker.db.models import AlertEvent, CostLine, DailyEstimate, Reconciliation
 from ai_cost_tracker.estimate import normalise_model
+from ai_cost_tracker.fx import FxBook, load_fx_book
 
 UNMAPPED = "unmapped"
 VARIANCE_THRESHOLD = Decimal("0.02")
@@ -25,6 +32,8 @@ ALERT_KIND = "variance"
 _VAR_QUANT = Decimal("0.000001")
 
 _Key = tuple[str, str, str, date]  # cloud, account, model, day
+_AccountDay = tuple[str, str, date]  # cloud, account, day
+_ByCurrency = dict[_Key, dict[str, Decimal]]
 
 
 def day_status(has_billed: bool, day: date, today: date) -> str:
@@ -49,8 +58,12 @@ async def reconcile(
 ) -> int:
     """Replace Reconciliation rows for [start, end] and update variance alerts; returns rows."""
     today = today or datetime.now(UTC).date()
-    estimated, price_missing = await _estimated(session, tenant_id, start, end)
-    billed = await _billed(session, tenant_id, start, end)
+    estimated_raw, price_missing = await _estimated(session, tenant_id, start, end)
+    billed_raw = await _billed(session, tenant_id, start, end)
+    currencies = _billing_currencies(billed_raw)
+    estimated, billed, fx_approx, fx_missing = await _to_billing_currency(
+        session, start, end, estimated_raw, billed_raw, currencies
+    )
 
     await session.execute(
         delete(Reconciliation).where(
@@ -78,11 +91,13 @@ async def reconcile(
                 billed_cost=bill,
                 variance=variance,
                 day_status=day_status(bill is not None, day, today),
+                currency=currencies.get((cloud, account, day), "USD"),
             )
         )
         # An estimate with no price is incomplete, not wrong: alerting on it would just
         # repeat the price_missing flag on every day.
-        if variance is None or model == UNMAPPED or key in price_missing:
+        # Same for a missing FX rate: the amounts are in different currencies.
+        if variance is None or model == UNMAPPED or key in price_missing or key in fx_missing:
             continue
         subject = _subject(key)
         alert = alerts.get(subject)
@@ -96,6 +111,8 @@ async def reconcile(
                 "billed_cost": str(bill),
                 "variance": str(variance),
                 "price_missing": key in price_missing,
+                "currency": currencies.get((cloud, account, day), "USD"),
+                "fx_approximate": key in fx_approx,
             }
             message = (
                 f"Estimated cost for {model} on {day.isoformat()} ({account}) differs from "
@@ -116,8 +133,8 @@ async def reconcile(
 
 async def _estimated(
     session: AsyncSession, tenant_id: uuid.UUID, start: date, end: date
-) -> tuple[dict[_Key, Decimal], set[_Key]]:
-    totals: dict[_Key, Decimal] = {}
+) -> tuple[_ByCurrency, set[_Key]]:
+    totals: _ByCurrency = {}
     missing: set[_Key] = set()
     rows = await session.scalars(
         select(DailyEstimate).where(
@@ -128,7 +145,9 @@ async def _estimated(
     )
     for r in rows:
         key = (r.cloud, r.account_id, normalise_model(r.model, r.cloud) or UNMAPPED, r.day)
-        totals[key] = totals.get(key, Decimal(0)) + Decimal(r.estimated_cost)
+        by_ccy = totals.setdefault(key, {})
+        ccy = (r.currency or "USD").upper()
+        by_ccy[ccy] = by_ccy.get(ccy, Decimal(0)) + Decimal(r.estimated_cost)
         if r.price_missing:
             missing.add(key)
     return totals, missing
@@ -136,13 +155,14 @@ async def _estimated(
 
 async def _billed(
     session: AsyncSession, tenant_id: uuid.UUID, start: date, end: date
-) -> dict[_Key, Decimal]:
+) -> _ByCurrency:
     rows = await session.execute(
         select(
             CostLine.cloud,
             CostLine.sub_account_id,
             CostLine.ai_model,
             CostLine.charge_period_start,
+            CostLine.billing_currency,
             func.sum(CostLine.billed_cost),
         )
         .where(
@@ -158,13 +178,76 @@ async def _billed(
             CostLine.sub_account_id,
             CostLine.ai_model,
             CostLine.charge_period_start,
+            CostLine.billing_currency,
         )
     )
-    totals: dict[_Key, Decimal] = {}
-    for cloud, account, model, day, cost in rows:
+    totals: _ByCurrency = {}
+    for cloud, account, model, day, currency, cost in rows:
         key = (cloud, account, normalise_model(model, cloud) or UNMAPPED, day)
-        totals[key] = totals.get(key, Decimal(0)) + Decimal(cost or 0)
+        by_ccy = totals.setdefault(key, {})
+        ccy = (currency or "USD").upper()
+        by_ccy[ccy] = by_ccy.get(ccy, Decimal(0)) + Decimal(cost or 0)
     return totals
+
+
+def _billing_currencies(billed: _ByCurrency) -> dict[_AccountDay, str]:
+    """The currency each (cloud, account, day) is billed in.
+
+    One per account in practice; if lines ever mix currencies, the one carrying the most
+    cost wins (ties alphabetical) and the rest are converted into it.
+    """
+    weight: dict[_AccountDay, dict[str, Decimal]] = {}
+    for (cloud, account, _model, day), by_ccy in billed.items():
+        w = weight.setdefault((cloud, account, day), {})
+        for ccy, cost in by_ccy.items():
+            w[ccy] = w.get(ccy, Decimal(0)) + abs(cost)
+    return {k: min(w, key=lambda c: (-w[c], c)) for k, w in weight.items()}
+
+
+async def _to_billing_currency(
+    session: AsyncSession,
+    start: date,
+    end: date,
+    estimated: _ByCurrency,
+    billed: _ByCurrency,
+    currencies: dict[_AccountDay, str],
+) -> tuple[dict[_Key, Decimal], dict[_Key, Decimal], set[_Key], set[_Key]]:
+    """Sum each key's amounts in its account-day billing currency.
+
+    Returns (estimated, billed, keys with an approximate rate, keys with no rate). Rates are
+    only loaded when some amount actually needs converting, so single-currency tenants keep
+    exact, unquantized sums.
+    """
+    needs_fx = any(
+        ccy != currencies.get((k[0], k[1], k[3]), ccy)
+        for src in (estimated, billed)
+        for k, by_ccy in src.items()
+        for ccy in by_ccy
+    )
+    book = await load_fx_book(session, start, end) if needs_fx else FxBook()
+    approx: set[_Key] = set()
+    missing: set[_Key] = set()
+
+    def collapse(src: _ByCurrency) -> dict[_Key, Decimal]:
+        out: dict[_Key, Decimal] = {}
+        for key, by_ccy in src.items():
+            cloud, account, _model, day = key
+            target = currencies.get((cloud, account, day))
+            total = Decimal(0)
+            for ccy, amount in sorted(by_ccy.items()):
+                if target is None or ccy == target:
+                    total += amount
+                    continue
+                if book.rate(day, ccy, target) is None:
+                    missing.add(key)
+                converted, is_approx = book.convert(amount, day, ccy, target)
+                if is_approx:
+                    approx.add(key)
+                total += converted
+            out[key] = total
+        return out
+
+    return collapse(estimated), collapse(billed), approx, missing
 
 
 def _subject(key: _Key) -> str:
