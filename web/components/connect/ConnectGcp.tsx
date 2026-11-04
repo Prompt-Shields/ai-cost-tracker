@@ -582,7 +582,9 @@ function RolesPanel({ setup }: { setup: GcpSetup }) {
             <span style={{ minWidth: 0 }}>
               <span className={styles.mono}>{r.role}</span>
               <br />
-              <span className={styles.roleScope}>on the {r.scope}</span>
+              <span className={styles.roleScope}>
+                {r.scope.startsWith("each ") ? "on" : "on the"} {r.scope}
+              </span>
             </span>
             <span className={styles.sourceBody} style={{ margin: 0 }}>
               {r.why}

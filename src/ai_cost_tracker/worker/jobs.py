@@ -315,10 +315,11 @@ async def run_inventory(
         async with session_factory() as session:
             inventory = await ingest.sync_inventory(session, tenant_id, connector)
     except Exception as exc:
-        for acct in await _tracked_accounts(session_factory, tenant_id):
+        for acct in await _tracked_accounts(session_factory, tenant_id, _cloud(connector)):
             await _record_error(session_factory, tenant_id, acct, "inventory", exc)
         raise
-    for acct in await _tracked_accounts(session_factory, tenant_id):
+    # Only this connector's cloud: another cloud's accounts are never in its inventory.
+    for acct in await _tracked_accounts(session_factory, tenant_id, _cloud(connector)):
         if acct.account_id in inventory:
             async with session_factory() as session:
                 await _record_ok(session, tenant_id, acct, "inventory")
