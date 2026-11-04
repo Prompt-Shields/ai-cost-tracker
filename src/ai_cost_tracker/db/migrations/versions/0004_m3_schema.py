@@ -1,4 +1,5 @@
-"""M3 schema: daily FX reference rates for the multi-cloud reporting currency.
+"""M3 schema: daily FX reference rates for the multi-cloud reporting currency, and the
+currency of each reconciliation row.
 
 Revision ID: 0004_m3_schema
 Revises: 0003_m2_schema
@@ -29,8 +30,14 @@ def upgrade() -> None:
         sa.UniqueConstraint("day", "base", "quote"),
     )
     op.create_index(op.f("ix_fx_rate_day"), "fx_rate", ["day"], unique=False)
+    op.add_column(
+        "reconciliation",
+        sa.Column("currency", sa.String(length=3), server_default="USD", nullable=False),
+    )
 
 
 def downgrade() -> None:
+    with op.batch_alter_table("reconciliation") as batch:
+        batch.drop_column("currency")
     op.drop_index(op.f("ix_fx_rate_day"), table_name="fx_rate")
     op.drop_table("fx_rate")

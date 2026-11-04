@@ -246,6 +246,8 @@ class Reconciliation(Base):
     variance: Mapped[Decimal | None] = mapped_column(Numeric(12, 6))
     # estimated | billed | finalised
     day_status: Mapped[str] = mapped_column(String(16), default="estimated")
+    # Currency of both amounts: the account's billing currency (estimates are converted).
+    currency: Mapped[str] = mapped_column(String(3), default="USD", server_default="USD")
 
 
 class AlertEvent(Base):

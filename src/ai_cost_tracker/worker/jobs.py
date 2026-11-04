@@ -537,8 +537,16 @@ async def run_price_sync(
     return total
 
 
-async def run_fx_sync(session_factory: SessionFactory) -> int | None:
-    """Daily ECB reference rates for converting other billing currencies (``fx.py``)."""
+async def run_fx_sync(
+    session_factory: SessionFactory, settings: Settings | None = None
+) -> int | None:
+    """Daily ECB reference rates for converting other billing currencies (``fx.py``).
+
+    Skipped with the fake connector: its demo GCP project bills at a fixed demo rate
+    (``seed-demo``), and real rates would overwrite it and raise false variance alerts.
+    """
+    if settings is not None and settings.connector == "fake":
+        return None
     try:
         from ai_cost_tracker.fx import sync_fx_rates
 
@@ -891,7 +899,7 @@ async def sync_prices_job(ctx: dict[str, Any]) -> dict[str, Any]:
 
 
 async def sync_fx_job(ctx: dict[str, Any]) -> dict[str, Any]:
-    return {"fx": await run_fx_sync(get_sessionmaker())}
+    return {"fx": await run_fx_sync(get_sessionmaker(), get_settings())}
 
 
 async def discovery_job(ctx: dict[str, Any]) -> dict[str, Any]:
