@@ -46,6 +46,36 @@ param connector string = 'azure'
 @description('Subscriptions to track. Empty: every subscription the identity can read that has AI resources.')
 param azureSubscriptionIds array = []
 
+// GCP (Vertex AI) connection through Workload Identity Federation: no keys, so nothing here is
+// secret. Empty values are not set on the containers, so config.py defaults apply.
+// docs/gcp-setup.md explains each one.
+@description('Turn on the GCP connector (ACT_GCP_ENABLED).')
+param gcpEnabled bool = false
+
+@description('GCP project ids to track. Empty: every visible project that uses Vertex AI.')
+param gcpProjectIds array = []
+
+@description('WIF provider resource name, //iam.googleapis.com/projects/<number>/locations/global/workloadIdentityPools/<pool>/providers/<provider>.')
+param gcpWifAudience string = ''
+
+@description('Email of the read-only service account the app impersonates.')
+param gcpServiceAccount string = ''
+
+@description('Entra token scope exchanged with Google STS. Empty: api://AzureADTokenExchange/.default.')
+param gcpAzureTokenScope string = ''
+
+@description('Detailed billing export table, <project>.<dataset>.<table>.')
+param gcpBillingExportTable string = ''
+
+@description('BigQuery location of the billing export dataset. Empty: US.')
+param gcpBillingExportLocation string = ''
+
+@description('Vertex AI regions to list endpoints in. Empty: the config.py default list.')
+param gcpRegions array = []
+
+@description('Currency every total is reported in. Empty: USD.')
+param reportingCurrency string = ''
+
 @description('Public web URL if a custom domain is bound; empty uses the Container Apps FQDN.')
 param publicWebUrl string = ''
 
@@ -153,6 +183,15 @@ module apps 'modules/apps.bicep' = {
     roleGroups: roleGroups
     connector: connector
     azureSubscriptionIds: azureSubscriptionIds
+    gcpEnabled: gcpEnabled
+    gcpProjectIds: gcpProjectIds
+    gcpWifAudience: gcpWifAudience
+    gcpServiceAccount: gcpServiceAccount
+    gcpAzureTokenScope: gcpAzureTokenScope
+    gcpBillingExportTable: gcpBillingExportTable
+    gcpBillingExportLocation: gcpBillingExportLocation
+    gcpRegions: gcpRegions
+    reportingCurrency: reportingCurrency
     publicWebUrl: publicWebUrl
     allowedIpRanges: allowedIpRanges
     apiMinReplicas: apiMinReplicas

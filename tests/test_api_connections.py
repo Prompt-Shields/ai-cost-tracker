@@ -69,6 +69,10 @@ def _account(tenant_id, account_id, name, **kw) -> CloudAccountRow:
     )
 
 
+def _gcp(tenant_id, account_id, name, **kw) -> CloudAccountRow:
+    return CloudAccountRow(tenant_id=tenant_id, cloud="gcp", account_id=account_id, name=name, **kw)
+
+
 async def test_list_connections_with_health_and_backfill(client, session, tenant_id):
     now = datetime.now(UTC)
     session.add_all(
@@ -138,12 +142,19 @@ async def test_discovered(client, session, tenant_id):
             ),
             _account(tenant_id, "empty", "No AI", tracked=False, has_ai_resources=False),
             _account(tenant_id, "tracked", "Tracked", tracked=True, has_ai_resources=True),
+            _gcp(tenant_id, "gcp-new", "Vertex proj", tracked=False, has_ai_resources=True),
         ]
     )
     await session.commit()
     resp = await client.get("/api/v1/connections/discovered")
     assert resp.json() == [
-        {"account_id": "new", "name": "New AI", "discovered_at": "2026-10-14T06:00:00+00:00"}
+        {
+            "cloud": "azure",
+            "account_id": "new",
+            "name": "New AI",
+            "discovered_at": "2026-10-14T06:00:00+00:00",
+        },
+        {"cloud": "gcp", "account_id": "gcp-new", "name": "Vertex proj", "discovered_at": None},
     ]
 
 
@@ -211,3 +222,65 @@ async def test_viewer_track_writes_no_audit_row(client, session, tenant_id):
         await client.post("/api/v1/connections/new/track", json={"tracked": True})
     ).status_code == 403
     assert (await session.scalars(select(AuditLog))).all() == []
+
+
+# --- GCP projects -----------------------------------------------------------------------
+
+
+async def test_gcp_projects_listed_with_gcp_wording(client, session, tenant_id):
+    session.add_all(
+        [
+            _gcp(tenant_id, "ai-prod", "AI Prod"),
+            _gcp(tenant_id, "new-proj", "New", access_status="waiting_for_access"),
+            SyncState(
+                tenant_id=tenant_id,
+                cloud="gcp",
+                account_id="ai-prod",
+                source="cost",
+                last_error="Client error '403 Forbidden' for url https://bigquery...",
+            ),
+            SyncState(
+                tenant_id=tenant_id,
+                cloud="gcp",
+                account_id="ai-prod",
+                source="usage",
+                last_error="ClientAuthenticationError: credential unavailable",
+            ),
+        ]
+    )
+    await session.commit()
+    by_id = {c["account_id"]: c for c in (await client.get("/api/v1/connections")).json()}
+    prod = by_id["ai-prod"]
+    assert prod["cloud"] == "gcp"
+    cost = prod["sources"]["cost"]
+    assert cost["message"] == "Read-only roles missing on project ai-prod"
+    assert "gcloud projects add-iam-policy-binding ai-prod" in cost["fix"]
+    assert "az role" not in cost["fix"]
+    usage = prod["sources"]["usage"]
+    assert "Workload Identity Federation" in usage["message"]
+    assert "ACT_GCP_WIF_AUDIENCE" in usage["fix"]
+    waiting = by_id["new-proj"]["sources"]["inventory"]
+    assert waiting["message"] == "Waiting for someone to grant access"
+    assert "gcloud projects add-iam-policy-binding new-proj" in waiting["fix"]
+
+
+async def test_track_gcp_project(client, session, tenant_id, principal, enqueued):
+    principal[0] = ADMIN
+    session.add_all(
+        [
+            _gcp(tenant_id, "same-id-x", "GCP", tracked=False, has_ai_resources=True),
+            _account(tenant_id, "same-id-x", "Azure", tracked=False),
+        ]
+    )
+    await session.commit()
+    resp = await client.post(
+        "/api/v1/connections/same-id-x/track?cloud=gcp", json={"tracked": True}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["cloud"] == "gcp" and resp.json()["tracked"] is True
+    assert enqueued == [("same-id-x", "gcp")]
+    rows = {r["cloud"]: r for r in (await client.get("/api/v1/connections")).json()}
+    assert rows["azure"]["tracked"] is False
+
+    bad = await client.post("/api/v1/connections/same-id-x/track?cloud=ibm", json={"tracked": True})
+    assert bad.status_code == 422

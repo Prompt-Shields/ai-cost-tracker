@@ -4,7 +4,8 @@
 that nobody has added yet, and raises a "new subscription" banner. ``check_pending_access``
 connects accounts whose Reader role has just been granted, and flags tracked accounts whose
 role was removed. Both take ``(session_factory, connector, settings)`` like the passes in
-``jobs.py``; the worker schedule calls them.
+``jobs.py``; the worker schedule calls them once per connector, so each only touches the
+connector's own cloud (Azure subscriptions or GCP projects).
 """
 
 import logging
@@ -27,8 +28,25 @@ CONNECTED = "connected"
 WAITING = "waiting_for_access"
 NO_ACCESS = "no_access"
 
-NEW_SUBSCRIPTION = "new_subscription"
+NEW_SUBSCRIPTION = "new_subscription"  # Alert kind for any cloud; the text says "project" on GCP.
 ACCESS_LOST = "access_lost"
+
+# What an account is called and which role it grants us, per cloud, for alert/state text.
+_NOUN = {"gcp": "project"}
+_ROLE = {"gcp": "Read-only roles"}
+
+
+def _noun(cloud: str) -> str:
+    return _NOUN.get(cloud, "subscription")
+
+
+def _role(cloud: str) -> str:
+    return _ROLE.get(cloud, "Reader role")
+
+
+def _cloud(connector: Connector) -> str | None:
+    """The connector's cloud; None (every cloud) for old test doubles that don't declare one."""
+    return getattr(connector, "cloud", None)
 
 
 async def run_discovery(
@@ -40,7 +58,12 @@ async def run_discovery(
     an untracked account seen again only has its name and AI flag refreshed.
     """
     now = datetime.now(UTC)
-    visible = [a for a in await connector.list_accounts(include_all=True) if a.has_ai_resources]
+    cloud = _cloud(connector)
+    visible = [
+        a
+        for a in await connector.list_accounts(include_all=True)
+        if a.has_ai_resources and (cloud is None or a.cloud == cloud)
+    ]
     new_ids: list[str] = []
     async with session_factory() as session:
         tenant_id = await ingest.get_or_create_tenant(session, settings.default_tenant_slug)
@@ -64,7 +87,7 @@ async def run_discovery(
                     tenant_id,
                     NEW_SUBSCRIPTION,
                     account.account_id,
-                    f"New subscription with AI resources found: {account.name}",
+                    f"New {_noun(account.cloud)} with AI resources found: {account.name}",
                     {"cloud": account.cloud, "name": account.name},
                 )
                 new_ids.append(account.account_id)
@@ -91,15 +114,13 @@ async def check_pending_access(
     Returned ids include both waiting->connected and no_access->connected, so the caller can
     backfill them. An error other than forbidden/not-found leaves the status unchanged.
     """
+    cloud = _cloud(connector)
     async with session_factory() as session:
         tenant_id = await ingest.get_or_create_tenant(session, settings.default_tenant_slug)
-        rows = (
-            await session.scalars(
-                select(CloudAccountRow)
-                .where(CloudAccountRow.tenant_id == tenant_id)
-                .order_by(CloudAccountRow.account_id)
-            )
-        ).all()
+        query = select(CloudAccountRow).where(CloudAccountRow.tenant_id == tenant_id)
+        if cloud is not None:
+            query = query.where(CloudAccountRow.cloud == cloud)
+        rows = (await session.scalars(query.order_by(CloudAccountRow.account_id))).all()
     to_check = [
         (r.cloud, r.account_id, r.access_status)
         for r in rows
@@ -144,9 +165,9 @@ async def _check_one(
         return status != CONNECTED
 
     if status == WAITING:
-        error = "Reader role not granted yet"
+        error = f"{_role(cloud)} not granted yet"
     else:
-        error = "Reader role missing: the app can no longer read this subscription"
+        error = f"{_role(cloud)} missing: the app can no longer read this {_noun(cloud)}"
         if status == CONNECTED:
             row.access_status = NO_ACCESS
             await _raise_alert(
@@ -154,7 +175,7 @@ async def _check_one(
                 tenant_id,
                 ACCESS_LOST,
                 account_id,
-                f"Lost access to {row.name}: re-grant the Reader role",
+                f"Lost access to {row.name}: re-grant the {_role(cloud)}",
                 {"cloud": cloud, "name": row.name},
             )
     await session.commit()

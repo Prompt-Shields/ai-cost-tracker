@@ -1,8 +1,11 @@
-"""Connection health panel and the "new subscription found" banner (issues #24, #25)."""
+"""Connection health panel and the "new subscription found" banner (issues #24, #25).
+
+Lists every cloud's accounts (Azure subscriptions, GCP projects) with a ``cloud`` field.
+"""
 
 import uuid
 from datetime import UTC, datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -12,6 +15,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ai_cost_tracker import audit
 from ai_cost_tracker.api.auth import Principal, get_principal, require_role
 from ai_cost_tracker.api.deps import SessionDep, SettingsDep, TenantId
+from ai_cost_tracker.config import Settings
+from ai_cost_tracker.connectors.gcp import onboarding as gcp_onboarding
 from ai_cost_tracker.db.models import CloudAccountRow, SyncState
 from ai_cost_tracker.health import describe
 
@@ -19,6 +24,7 @@ router = APIRouter(tags=["connections"], dependencies=[Depends(get_principal)])
 
 HEALTH_SOURCES = ("inventory", "cost", "usage")
 BACKFILL_SOURCES = ("cost", "usage")
+Cloud = Literal["azure", "gcp", "aws"]
 
 
 class TrackBody(BaseModel):
@@ -52,7 +58,7 @@ async def list_connections(
     ).all()
     states = await _sync_states(session, tenant_id)
     now = datetime.now(UTC)
-    return [_connection(a, states, now, settings.azure_principal_id) for a in accounts]
+    return [_connection(a, states, now, settings) for a in accounts]
 
 
 @router.get("/connections/discovered")
@@ -68,7 +74,12 @@ async def list_discovered(session: SessionDep, tenant_id: TenantId) -> list[dict
         .order_by(CloudAccountRow.name, CloudAccountRow.account_id)
     )
     return [
-        {"account_id": r.account_id, "name": r.name, "discovered_at": utc_iso(r.discovered_at)}
+        {
+            "cloud": r.cloud,
+            "account_id": r.account_id,
+            "name": r.name,
+            "discovered_at": utc_iso(r.discovered_at),
+        }
         for r in rows
     ]
 
@@ -81,7 +92,7 @@ async def track_account(
     tenant_id: TenantId,
     settings: SettingsDep,
     admin: Annotated[Principal, Depends(require_role("admin"))],
-    cloud: str = "azure",
+    cloud: Cloud = "azure",
 ) -> dict[str, Any]:
     account = await session.scalar(
         select(CloudAccountRow).where(
@@ -107,7 +118,7 @@ async def track_account(
     if body.tracked and account.access_status == "connected":
         await enqueue_backfill(account.account_id, account.cloud)
     states = await _sync_states(session, tenant_id, account_id)
-    return _connection(account, states, datetime.now(UTC), settings.azure_principal_id)
+    return _connection(account, states, datetime.now(UTC), settings)
 
 
 async def _sync_states(
@@ -123,7 +134,7 @@ def _connection(
     account: CloudAccountRow,
     states: dict[tuple[str, str, str], SyncState],
     now: datetime,
-    principal_id: str,
+    settings: Settings,
 ) -> dict[str, Any]:
     def state(source: str) -> SyncState | None:
         return states.get((account.cloud, account.account_id, source))
@@ -136,13 +147,16 @@ def _connection(
             now,
             account.access_status,
             account_id=account.account_id,
-            principal_id=principal_id,
+            principal_id=settings.azure_principal_id,
         )
+        message, fix = h.message, h.fix
+        if account.cloud == "gcp":
+            message, fix = _gcp_wording(account.account_id, message, fix, settings)
         sources[source] = {
             "status": h.status,
             "last_success_at": utc_iso(h.last_success_at),
-            "message": h.message,
-            "fix": h.fix,
+            "message": message,
+            "fix": fix,
         }
     return {
         "cloud": account.cloud,
@@ -153,6 +167,30 @@ def _connection(
         "sources": sources,
         "backfill": {s: _backfill(state(s)) for s in BACKFILL_SOURCES},
     }
+
+
+def _gcp_wording(
+    project_id: str, message: str, fix: str | None, settings: Settings
+) -> tuple[str, str | None]:
+    """``health.describe`` speaks Azure (Reader, subscriptions, ``az``); say it the GCP way.
+
+    Access fixes become the project's ``gcloud`` grant commands; an Azure credential hint
+    becomes the WIF one.
+    """
+    message = message.replace(
+        "Reader role missing on subscription", "Read-only roles missing on project"
+    )
+    message = message.replace("subscription", "project")
+    if fix and "az role assignment" in fix:
+        sa = settings.gcp_service_account or gcp_onboarding.SERVICE_ACCOUNT_PLACEHOLDER
+        try:
+            fix = gcp_onboarding.project_grant_commands(project_id, sa)
+        except ValueError:  # Not a valid project id (old or hand-made row): no command.
+            fix = None
+    elif fix and "managed identity" in fix:
+        message = "The app could not sign in to Google Cloud (Workload Identity Federation)"
+        fix = "Check ACT_GCP_WIF_AUDIENCE and ACT_GCP_SERVICE_ACCOUNT (docs/gcp-setup.md)"
+    return message, fix
 
 
 def _backfill(row: SyncState | None) -> dict[str, Any] | None:
