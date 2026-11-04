@@ -1,0 +1,9 @@
+{
+  "name": "projects/222/services/aiplatform.googleapis.com",
+  "parent": "projects/222",
+  "state": "DISABLED",
+  "config": {
+    "name": "aiplatform.googleapis.com",
+    "title": "Vertex AI API"
+  }
+}

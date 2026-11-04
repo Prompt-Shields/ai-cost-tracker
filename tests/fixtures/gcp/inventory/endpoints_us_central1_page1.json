@@ -1,0 +1,53 @@
+{
+  "endpoints": [
+    {
+      "name": "projects/123456789012/locations/us-central1/endpoints/1111",
+      "displayName": "gemma-chat",
+      "labels": {
+        "team": "search",
+        "env": "prod"
+      },
+      "deployedModels": [
+        {
+          "id": "a1",
+          "model": "projects/123456789012/locations/us-central1/models/9001",
+          "modelVersionId": "1",
+          "displayName": "gemma-2-9b-it",
+          "dedicatedResources": {
+            "machineSpec": {
+              "machineType": "g2-standard-12",
+              "acceleratorType": "NVIDIA_L4",
+              "acceleratorCount": 1
+            },
+            "minReplicaCount": 1,
+            "maxReplicaCount": 2
+          }
+        },
+        {
+          "id": "a2",
+          "model": "projects/123456789012/locations/us-central1/models/9002",
+          "modelVersionId": "3",
+          "displayName": "llama-3-8b-instruct",
+          "dedicatedResources": {
+            "machineSpec": {
+              "machineType": "g2-standard-12"
+            },
+            "minReplicaCount": 1
+          }
+        }
+      ],
+      "trafficSplit": {
+        "a1": 10,
+        "a2": 90
+      },
+      "createTime": "2025-01-02T00:00:00Z"
+    },
+    {
+      "name": "projects/123456789012/locations/us-central1/endpoints/2222",
+      "displayName": "empty",
+      "deployedModels": [],
+      "createTime": "2025-01-02T00:00:00Z"
+    }
+  ],
+  "nextPageToken": "ep-2"
+}

@@ -1,0 +1,9 @@
+{
+  "name": "projects/123456789012/services/aiplatform.googleapis.com",
+  "parent": "projects/123456789012",
+  "state": "ENABLED",
+  "config": {
+    "name": "aiplatform.googleapis.com",
+    "title": "Vertex AI API"
+  }
+}

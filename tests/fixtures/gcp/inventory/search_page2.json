@@ -1,0 +1,18 @@
+{
+  "projects": [
+    {
+      "name": "projects/333",
+      "parent": "organizations/555",
+      "projectId": "data-lake",
+      "state": "ACTIVE",
+      "displayName": "Data lake"
+    },
+    {
+      "name": "projects/444",
+      "parent": "organizations/555",
+      "projectId": "old-thing",
+      "state": "DELETE_REQUESTED",
+      "displayName": "Old thing"
+    }
+  ]
+}

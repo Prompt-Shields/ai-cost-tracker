@@ -1,0 +1,94 @@
+{
+  "timeSeries": [
+    {
+      "metric": {
+        "type": "aiplatform.googleapis.com/publisher/online_serving/token_count",
+        "labels": {
+          "type": "input"
+        }
+      },
+      "resource": {
+        "type": "aiplatform.googleapis.com/PublisherModel",
+        "labels": {
+          "resource_container": "123456789012",
+          "location": "us-central1",
+          "model_user_id": "gemini-2.5-flash"
+        }
+      },
+      "metricKind": "DELTA",
+      "valueType": "INT64"
+    },
+    {
+      "metric": {
+        "type": "aiplatform.googleapis.com/publisher/online_serving/token_count",
+        "labels": {
+          "type": "output"
+        }
+      },
+      "resource": {
+        "type": "aiplatform.googleapis.com/PublisherModel",
+        "labels": {
+          "resource_container": "123456789012",
+          "location": "us-central1",
+          "model_user_id": "gemini-2.5-flash"
+        }
+      },
+      "metricKind": "DELTA",
+      "valueType": "INT64"
+    },
+    {
+      "metric": {
+        "type": "aiplatform.googleapis.com/publisher/online_serving/token_count",
+        "labels": {
+          "type": "input"
+        }
+      },
+      "resource": {
+        "type": "aiplatform.googleapis.com/PublisherModel",
+        "labels": {
+          "resource_container": "123456789012",
+          "location": "europe-west4",
+          "model_user_id": "gemini-2.0-flash-001"
+        }
+      },
+      "metricKind": "DELTA",
+      "valueType": "INT64"
+    },
+    {
+      "metric": {
+        "type": "aiplatform.googleapis.com/publisher/online_serving/token_count",
+        "labels": {
+          "type": "input"
+        }
+      },
+      "resource": {
+        "type": "aiplatform.googleapis.com/PublisherModel",
+        "labels": {
+          "resource_container": "123456789012",
+          "location": "global",
+          "model_user_id": "gemini-2.5-pro"
+        }
+      },
+      "metricKind": "DELTA",
+      "valueType": "INT64"
+    },
+    {
+      "metric": {
+        "type": "aiplatform.googleapis.com/publisher/online_serving/token_count",
+        "labels": {
+          "type": "input"
+        }
+      },
+      "resource": {
+        "type": "aiplatform.googleapis.com/PublisherModel",
+        "labels": {
+          "resource_container": "999999999999",
+          "location": "us-east5",
+          "model_user_id": "claude-sonnet-4"
+        }
+      },
+      "metricKind": "DELTA",
+      "valueType": "INT64"
+    }
+  ]
+}

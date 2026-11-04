@@ -1,0 +1,18 @@
+{
+  "endpoints": [
+    {
+      "name": "projects/123456789012/locations/us-central1/endpoints/3333",
+      "displayName": "embedder",
+      "deployedModels": [
+        {
+          "id": "b1",
+          "model": "projects/123456789012/locations/us-central1/models/9003",
+          "displayName": "text-embedding-005",
+          "automaticResources": {
+            "minReplicaCount": 1
+          }
+        }
+      ]
+    }
+  ]
+}
