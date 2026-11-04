@@ -382,7 +382,7 @@ async def cost_centres_daily(
         session, tenant_id, rng.start, rng.end, filters, level=level
     )
     return {
-        "currency": await q.currency(session, tenant_id, rng.start, rng.end),
+        "currency": q.get_reporting_currency(),
         "rows": [
             {
                 "day": r.day.isoformat(),
@@ -402,7 +402,7 @@ async def untagged(rng: Range, session: SessionDep, tenant_id: TenantId) -> dict
     return {
         "total": money(report.total),
         "unattributed_cost": money(report.unattributed_cost),
-        "currency": await q.currency(session, tenant_id, rng.start, rng.end),
+        "currency": q.get_reporting_currency(),
         "required_tags": alloc.REQUIRED_TAGS,
         "deployments": [
             {

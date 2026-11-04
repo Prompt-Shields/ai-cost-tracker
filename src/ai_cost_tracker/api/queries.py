@@ -37,6 +37,7 @@ from sqlalchemy import Date, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
+from ai_cost_tracker.config import get_settings
 from ai_cost_tracker.connectors.base import is_provisioned
 from ai_cost_tracker.db.models import (
     CostLine,
@@ -226,6 +227,11 @@ class _Converter:
         return converted
 
 
+def get_reporting_currency() -> str:
+    """The currency every total is reported in (``ACT_REPORTING_CURRENCY``)."""
+    return get_settings().reporting_currency
+
+
 async def load_inventory(session: AsyncSession, tenant_id: uuid.UUID) -> Inventory:
     rows = await session.scalars(select(DeploymentRow).where(DeploymentRow.tenant_id == tenant_id))
     return Inventory(rows)
@@ -261,12 +267,14 @@ async def load(
     end: date,
     filters: Filters,
     inventory: Inventory,
-    reporting_currency: str = DEFAULT_CURRENCY,
+    reporting_currency: str | None = None,
 ) -> Dataset:
     """All cells for the tenant in [start, end] that pass ``filters``, plus day statuses.
 
-    Money is converted into ``reporting_currency`` per day (see the module docstring).
+    Money is converted into ``reporting_currency`` (default: the configured one) per day (see
+    the module docstring).
     """
+    reporting_currency = reporting_currency or get_reporting_currency()
     resources = _resources_for(inventory, filters)
     data = Dataset(currency=reporting_currency)
     if resources is not None and not resources:

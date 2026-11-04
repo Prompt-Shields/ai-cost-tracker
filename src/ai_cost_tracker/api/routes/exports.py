@@ -233,7 +233,7 @@ async def _cost_centres_daily(
         raise HTTPException(501, "cost-centre allocation is not available yet") from exc
     rows = await cost_centres_daily(session, tenant_id, rng.start, rng.end, filters, level)
     return {
-        "currency": await q.currency(session, tenant_id, rng.start, rng.end),
+        "currency": q.get_reporting_currency(),
         "rows": [
             {
                 "day": r.day.isoformat(),

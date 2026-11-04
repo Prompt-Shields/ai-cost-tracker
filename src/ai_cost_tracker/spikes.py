@@ -46,7 +46,7 @@ KIND_INTRADAY = "spike_intraday"
 
 SPIKE_RATIO = Decimal(2)  # raise above 2x baseline
 CRITICAL_RATIO = Decimal(5)  # critical above 5x baseline
-DAILY_FLOOR = Decimal(5)  # and at least $5/day above baseline (billing currency)
+DAILY_FLOOR = Decimal(5)  # and at least 5/day above baseline (reporting currency)
 MIN_HISTORY_DAYS = 7
 BASELINE_WEEKS = 4
 
@@ -161,7 +161,7 @@ async def detect_daily(
     """Raise/refresh/resolve "spike" alerts for ``day``; returns alerts raised or refreshed."""
     start = day - timedelta(weeks=BASELINE_WEEKS)
     costs = await _daily_costs(session, tenant_id, start, day)
-    currency = await queries.currency(session, tenant_id, start, day)
+    currency = queries.get_reporting_currency()
     subjects = {_subject(k, day) for k in costs}
     alerts = await _alerts(session, tenant_id, KIND_DAILY, subjects)
     raised = 0
