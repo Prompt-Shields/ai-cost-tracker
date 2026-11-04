@@ -1,0 +1,141 @@
+{
+  "kind": "bigquery#getQueryResultsResponse",
+  "jobReference": {
+    "projectId": "billing-proj",
+    "jobId": "job_abc123",
+    "location": "US"
+  },
+  "jobComplete": true,
+  "schema": {
+    "fields": [
+      {
+        "name": "day",
+        "type": "DATE",
+        "mode": "NULLABLE"
+      },
+      {
+        "name": "location",
+        "type": "STRING",
+        "mode": "NULLABLE"
+      },
+      {
+        "name": "sku",
+        "type": "STRING",
+        "mode": "NULLABLE"
+      },
+      {
+        "name": "service",
+        "type": "STRING",
+        "mode": "NULLABLE"
+      },
+      {
+        "name": "currency",
+        "type": "STRING",
+        "mode": "NULLABLE"
+      },
+      {
+        "name": "cost",
+        "type": "NUMERIC",
+        "mode": "NULLABLE"
+      },
+      {
+        "name": "credits",
+        "type": "NUMERIC",
+        "mode": "NULLABLE"
+      },
+      {
+        "name": "quantity",
+        "type": "NUMERIC",
+        "mode": "NULLABLE"
+      }
+    ]
+  },
+  "totalRows": "4",
+  "pageToken": "tok-2",
+  "rows": [
+    {
+      "f": [
+        {
+          "v": "2026-10-01"
+        },
+        {
+          "v": "us-central1"
+        },
+        {
+          "v": "Gemini 2.5 Pro Text Input - Predictions"
+        },
+        {
+          "v": "Vertex AI"
+        },
+        {
+          "v": "EUR"
+        },
+        {
+          "v": "12.345678901"
+        },
+        {
+          "v": "-2.000000000"
+        },
+        {
+          "v": "9876.5"
+        }
+      ]
+    },
+    {
+      "f": [
+        {
+          "v": "2026-10-01"
+        },
+        {
+          "v": "us-central1"
+        },
+        {
+          "v": "Gemini 2.5 Pro Text Output - Predictions"
+        },
+        {
+          "v": "Vertex AI"
+        },
+        {
+          "v": "EUR"
+        },
+        {
+          "v": "40.1"
+        },
+        {
+          "v": "0"
+        },
+        {
+          "v": "4010.000000001"
+        }
+      ]
+    },
+    {
+      "f": [
+        {
+          "v": "2026-10-01"
+        },
+        {
+          "v": null
+        },
+        {
+          "v": "Gemini 2.5 Flash Text Input - Predictions"
+        },
+        {
+          "v": "Vertex AI"
+        },
+        {
+          "v": "EUR"
+        },
+        {
+          "v": "0.000000001"
+        },
+        {
+          "v": null
+        },
+        {
+          "v": null
+        }
+      ]
+    }
+  ]
+}
