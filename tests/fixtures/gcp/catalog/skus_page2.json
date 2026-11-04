@@ -1,0 +1,345 @@
+{
+  "_comment": "Assumption (spike-gcp): shaped after Google's public services.skus.list reference; SKU ids are invented.",
+  "skus": [
+    {
+      "name": "services/C7E2-9256-1C43/skus/A001-0001-0007",
+      "skuId": "A001-0001-0007",
+      "description": "Gemini 2.5 Pro Text Input > 200K tokens - Predictions",
+      "category": {
+        "serviceDisplayName": "Vertex AI",
+        "resourceFamily": "ApplicationServices",
+        "resourceGroup": "Gemini",
+        "usageType": "OnDemand"
+      },
+      "serviceRegions": [
+        "us-central1"
+      ],
+      "pricingInfo": [
+        {
+          "summary": "",
+          "pricingExpression": {
+            "usageUnit": "1M{token}",
+            "usageUnitDescription": "1M{token}",
+            "displayQuantity": 1,
+            "tieredRates": [
+              {
+                "startUsageAmount": 0,
+                "unitPrice": {
+                  "currencyCode": "USD",
+                  "units": "2",
+                  "nanos": 500000000
+                }
+              }
+            ]
+          },
+          "currencyConversionRate": 1,
+          "effectiveTime": "2025-06-17T07:00:00Z"
+        }
+      ],
+      "serviceProviderName": "Google"
+    },
+    {
+      "name": "services/C7E2-9256-1C43/skus/A001-0001-0008",
+      "skuId": "A001-0001-0008",
+      "description": "Gemini 2.5 Flash Image Input - Predictions",
+      "category": {
+        "serviceDisplayName": "Vertex AI",
+        "resourceFamily": "ApplicationServices",
+        "resourceGroup": "Gemini",
+        "usageType": "OnDemand"
+      },
+      "serviceRegions": [
+        "us-central1"
+      ],
+      "pricingInfo": [
+        {
+          "summary": "",
+          "pricingExpression": {
+            "usageUnit": "1M{token}",
+            "usageUnitDescription": "1M{token}",
+            "displayQuantity": 1,
+            "tieredRates": [
+              {
+                "startUsageAmount": 0,
+                "unitPrice": {
+                  "currencyCode": "USD",
+                  "units": "0",
+                  "nanos": 300000000
+                }
+              }
+            ]
+          },
+          "currencyConversionRate": 1,
+          "effectiveTime": "2025-06-17T07:00:00Z"
+        }
+      ],
+      "serviceProviderName": "Google"
+    },
+    {
+      "name": "services/C7E2-9256-1C43/skus/A001-0001-0009",
+      "skuId": "A001-0001-0009",
+      "description": "Gemini 2.0 Flash Text Input - Batch Predictions",
+      "category": {
+        "serviceDisplayName": "Vertex AI",
+        "resourceFamily": "ApplicationServices",
+        "resourceGroup": "Gemini",
+        "usageType": "OnDemand"
+      },
+      "serviceRegions": [
+        "us-central1"
+      ],
+      "pricingInfo": [
+        {
+          "summary": "",
+          "pricingExpression": {
+            "usageUnit": "{token}",
+            "usageUnitDescription": "{token}",
+            "displayQuantity": 1,
+            "tieredRates": [
+              {
+                "startUsageAmount": 0,
+                "unitPrice": {
+                  "currencyCode": "USD",
+                  "units": "0",
+                  "nanos": 50
+                }
+              }
+            ],
+            "baseUnit": "{token}",
+            "baseUnitDescription": "{token}",
+            "baseUnitConversionFactor": 1
+          },
+          "currencyConversionRate": 1,
+          "effectiveTime": "2025-06-17T07:00:00Z"
+        }
+      ],
+      "serviceProviderName": "Google"
+    },
+    {
+      "name": "services/C7E2-9256-1C43/skus/A001-0001-0010",
+      "skuId": "A001-0001-0010",
+      "description": "Gemini 1.0 Pro Text Input Characters",
+      "category": {
+        "serviceDisplayName": "Vertex AI",
+        "resourceFamily": "ApplicationServices",
+        "resourceGroup": "Gemini",
+        "usageType": "OnDemand"
+      },
+      "serviceRegions": [
+        "us-central1"
+      ],
+      "pricingInfo": [
+        {
+          "summary": "",
+          "pricingExpression": {
+            "usageUnit": "k{char}",
+            "usageUnitDescription": "thousand characters",
+            "displayQuantity": 1,
+            "tieredRates": [
+              {
+                "startUsageAmount": 0,
+                "unitPrice": {
+                  "currencyCode": "USD",
+                  "units": "0",
+                  "nanos": 125000
+                }
+              }
+            ]
+          },
+          "currencyConversionRate": 1,
+          "effectiveTime": "2025-06-17T07:00:00Z"
+        }
+      ],
+      "serviceProviderName": "Google"
+    },
+    {
+      "name": "services/C7E2-9256-1C43/skus/A001-0001-0011",
+      "skuId": "A001-0001-0011",
+      "description": "Imagen 3 Generation",
+      "category": {
+        "serviceDisplayName": "Vertex AI",
+        "resourceFamily": "ApplicationServices",
+        "resourceGroup": "Gemini",
+        "usageType": "OnDemand"
+      },
+      "serviceRegions": [
+        "us-central1"
+      ],
+      "pricingInfo": [
+        {
+          "summary": "",
+          "pricingExpression": {
+            "usageUnit": "count",
+            "usageUnitDescription": "count",
+            "displayQuantity": 1,
+            "tieredRates": [
+              {
+                "startUsageAmount": 0,
+                "unitPrice": {
+                  "currencyCode": "USD",
+                  "units": "0",
+                  "nanos": 40000000
+                }
+              }
+            ]
+          },
+          "currencyConversionRate": 1,
+          "effectiveTime": "2025-06-17T07:00:00Z"
+        }
+      ],
+      "serviceProviderName": "Google"
+    },
+    {
+      "name": "services/C7E2-9256-1C43/skus/A001-0001-0012",
+      "skuId": "A001-0001-0012",
+      "description": "Prediction Online Node n1-standard-4 running in Americas",
+      "category": {
+        "serviceDisplayName": "Vertex AI",
+        "resourceFamily": "ApplicationServices",
+        "resourceGroup": "Gemini",
+        "usageType": "OnDemand"
+      },
+      "serviceRegions": [
+        "us-central1"
+      ],
+      "pricingInfo": [
+        {
+          "summary": "",
+          "pricingExpression": {
+            "usageUnit": "h",
+            "usageUnitDescription": "hour",
+            "displayQuantity": 1,
+            "tieredRates": [
+              {
+                "startUsageAmount": 0,
+                "unitPrice": {
+                  "currencyCode": "USD",
+                  "units": "0",
+                  "nanos": 218000000
+                }
+              }
+            ]
+          },
+          "currencyConversionRate": 1,
+          "effectiveTime": "2025-06-17T07:00:00Z"
+        }
+      ],
+      "serviceProviderName": "Google"
+    },
+    {
+      "name": "services/C7E2-9256-1C43/skus/A001-0001-0013",
+      "skuId": "A001-0001-0013",
+      "description": "Gemini 2.5 Flash Text Input - Predictions (1 Year Commitment)",
+      "category": {
+        "serviceDisplayName": "Vertex AI",
+        "resourceFamily": "ApplicationServices",
+        "resourceGroup": "Gemini",
+        "usageType": "Commit1Yr"
+      },
+      "serviceRegions": [
+        "us-central1"
+      ],
+      "pricingInfo": [
+        {
+          "summary": "",
+          "pricingExpression": {
+            "usageUnit": "1M{token}",
+            "usageUnitDescription": "1M{token}",
+            "displayQuantity": 1,
+            "tieredRates": [
+              {
+                "startUsageAmount": 0,
+                "unitPrice": {
+                  "currencyCode": "USD",
+                  "units": "0",
+                  "nanos": 200000000
+                }
+              }
+            ]
+          },
+          "currencyConversionRate": 1,
+          "effectiveTime": "2025-06-17T07:00:00Z"
+        }
+      ],
+      "serviceProviderName": "Google"
+    },
+    {
+      "name": "services/C7E2-9256-1C43/skus/A001-0001-0014",
+      "skuId": "A001-0001-0014",
+      "description": "Gemini 2.5 Pro Text Output - Batch Predictions",
+      "category": {
+        "serviceDisplayName": "Vertex AI",
+        "resourceFamily": "ApplicationServices",
+        "resourceGroup": "Gemini",
+        "usageType": "OnDemand"
+      },
+      "serviceRegions": [
+        "us-central1"
+      ],
+      "pricingInfo": [
+        {
+          "summary": "",
+          "pricingExpression": {
+            "usageUnit": "1M{token}",
+            "usageUnitDescription": "1M{token}",
+            "displayQuantity": 1,
+            "tieredRates": [
+              {
+                "startUsageAmount": 0,
+                "unitPrice": {
+                  "currencyCode": "EUR",
+                  "units": "0",
+                  "nanos": 0
+                }
+              }
+            ]
+          },
+          "currencyConversionRate": 1,
+          "effectiveTime": "2025-06-17T07:00:00Z"
+        }
+      ],
+      "serviceProviderName": "Google"
+    },
+    {
+      "name": "services/C7E2-9256-1C43/skus/A001-0001-0015",
+      "skuId": "A001-0001-0015",
+      "description": "Text Embedding 004 Online Predictions",
+      "category": {
+        "serviceDisplayName": "Vertex AI",
+        "resourceFamily": "ApplicationServices",
+        "resourceGroup": "Gemini",
+        "usageType": "OnDemand"
+      },
+      "serviceRegions": [
+        "us-central1"
+      ],
+      "pricingInfo": [
+        {
+          "summary": "",
+          "pricingExpression": {
+            "usageUnit": "1M{token}",
+            "usageUnitDescription": "1M{token}",
+            "displayQuantity": 1,
+            "tieredRates": [
+              {
+                "startUsageAmount": 0,
+                "unitPrice": {
+                  "currencyCode": "USD",
+                  "units": "0",
+                  "nanos": 20000
+                }
+              }
+            ],
+            "baseUnit": "count",
+            "baseUnitDescription": "count",
+            "baseUnitConversionFactor": 1000000
+          },
+          "currencyConversionRate": 1,
+          "effectiveTime": "2025-06-17T07:00:00Z"
+        }
+      ],
+      "serviceProviderName": "Google"
+    }
+  ],
+  "nextPageToken": ""
+}

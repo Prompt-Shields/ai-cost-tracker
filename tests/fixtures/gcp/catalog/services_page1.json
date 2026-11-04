@@ -1,0 +1,11 @@
+{
+  "services": [
+    {
+      "name": "services/6F81-5844-456A",
+      "serviceId": "6F81-5844-456A",
+      "displayName": "Compute Engine",
+      "businessEntityName": "businessEntities/GCP"
+    }
+  ],
+  "nextPageToken": "svc-2"
+}
