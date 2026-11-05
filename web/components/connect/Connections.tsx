@@ -48,8 +48,9 @@ export function Connections() {
         <div>
           <h1 className={styles.title}>Connections</h1>
           <p className={styles.lede}>
-            Per Azure subscription or Google Cloud project: when cost, token usage and deployments
-            were last pulled, and what to do when something is wrong. Refreshes every 30 seconds.
+            Per Azure subscription, Google Cloud project or AWS account: when cost, token usage and
+            deployments were last pulled, and what to do when something is wrong. Refreshes every
+            30 seconds.
           </p>
         </div>
         {isAdmin && (
@@ -88,8 +89,8 @@ export function Connections() {
         <div className={styles.notice}>
           <p className={styles.noticeTitle}>Nothing connected yet</p>
           <p className={styles.noticeBody}>
-            Connect Azure subscriptions or Google Cloud projects to start tracking AI spend. Both
-            use read-only access and no secrets.
+            Connect Azure subscriptions, Google Cloud projects or AWS accounts to start tracking AI
+            spend. All use read-only access and no secrets.
           </p>
           {isAdmin && (
             <div className={styles.actions}>
@@ -98,6 +99,9 @@ export function Connections() {
               </Link>
               <Link href="/connect/gcp" className={styles.secondary} style={{ textDecoration: "none" }}>
                 Connect Google Cloud
+              </Link>
+              <Link href="/connect/aws" className={styles.secondary} style={{ textDecoration: "none" }}>
+                Connect AWS
               </Link>
             </div>
           )}
@@ -257,28 +261,50 @@ function ConnectionCard({
 /** Why nothing is being pulled, in the cloud's own terms, with a link to the fix. */
 function AccessHelp({ conn, isAdmin }: { conn: Connection; isAdmin: boolean }) {
   const id = encodeURIComponent(conn.account_id);
-  const gcp = conn.cloud === "gcp";
   const waiting = conn.access_status === "waiting_for_access";
-  const text = gcp
-    ? waiting
-      ? "Waiting for the project owner to grant the read-only roles. It connects by itself once they do."
-      : "The app's service account has no access to this project, so nothing can be pulled."
-    : waiting
-      ? "Waiting for the subscription owner to grant the Reader role. It connects by itself once they do."
-      : "The app has no Reader role on this subscription, so nothing can be pulled.";
+  const { text, href, linkLabel } = accessHelp(conn.cloud, waiting, id);
   return (
     <p className={styles.sourceBody}>
       {text}{" "}
       {isAdmin && (
-        <Link
-          href={gcp ? `/connect/gcp/grant/${id}` : `/connect/pending/${id}`}
-          className={styles.link}
-        >
-          {gcp ? "Show the commands" : "Show the command"}
+        <Link href={href} className={styles.link}>
+          {linkLabel}
         </Link>
       )}
     </p>
   );
+}
+
+function accessHelp(
+  cloud: string,
+  waiting: boolean,
+  id: string,
+): { text: string; href: string; linkLabel: string } {
+  if (cloud === "aws") {
+    return {
+      text: waiting
+        ? "Waiting for the account owner to deploy the read-only role stack. It connects by itself once they do."
+        : "The app can't assume its read-only role in this account, so nothing can be pulled.",
+      href: `/connect/aws/account/${id}`,
+      linkLabel: "Show how to set it up",
+    };
+  }
+  if (cloud === "gcp") {
+    return {
+      text: waiting
+        ? "Waiting for the project owner to grant the read-only roles. It connects by itself once they do."
+        : "The app's service account has no access to this project, so nothing can be pulled.",
+      href: `/connect/gcp/grant/${id}`,
+      linkLabel: "Show the commands",
+    };
+  }
+  return {
+    text: waiting
+      ? "Waiting for the subscription owner to grant the Reader role. It connects by itself once they do."
+      : "The app has no Reader role on this subscription, so nothing can be pulled.",
+    href: `/connect/pending/${id}`,
+    linkLabel: "Show the command",
+  };
 }
 
 function SourceCell({ label, health }: { label: string; health: SourceHealth | undefined }) {

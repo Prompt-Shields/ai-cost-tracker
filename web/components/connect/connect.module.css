@@ -731,3 +731,14 @@
   letter-spacing: 0.04em;
   margin: 8px 0 -4px;
 }
+
+/* AWS onboarding */
+
+/* A link styled as a button that may wrap on narrow screens instead of overflowing. */
+.linkButton {
+  display: inline-block;
+  text-decoration: none;
+  text-align: center;
+  white-space: normal;
+  max-width: 100%;
+}

@@ -4,6 +4,7 @@ import styles from "./connect.module.css";
 const CLOUDS = [
   { cloud: "azure", label: "Azure", href: "/connect" },
   { cloud: "gcp", label: "Google Cloud", href: "/connect/gcp" },
+  { cloud: "aws", label: "AWS", href: "/connect/aws" },
 ] as const;
 
 export type ConnectCloud = (typeof CLOUDS)[number]["cloud"];
