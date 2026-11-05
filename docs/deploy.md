@@ -264,3 +264,9 @@ Not yet confirmed against a live subscription (tracked in issue #2):
 To track Vertex AI spend next to Azure, follow [gcp-setup.md](gcp-setup.md): a one-time
 Workload Identity Federation setup (no keys), then set the `ACT_GCP_*` repository variables
 the deploy workflow passes to the containers.
+
+## AWS (optional)
+
+To track Bedrock spend, follow [aws-setup.md](aws-setup.md): one CloudFormation stack per
+account creates a read-only role trusted by the app's managed identity (no access keys), then
+set the `ACT_AWS_*` repository variables the deploy workflow passes to the containers.
