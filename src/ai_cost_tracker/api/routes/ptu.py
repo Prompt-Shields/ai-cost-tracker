@@ -1,7 +1,9 @@
 """PTU utilisation and idle-capacity report (issue #32); maths in ``ai_cost_tracker.ptu``.
 
 A deployment is addressed by ``<account resource name>/<deployment>`` (the ``deployment_key``
-field of the list). The slash may be sent raw or percent-encoded.
+field of the list) or by the unique ``deployment_label`` (``<account>/<region>/<deployment>``
+on AWS, ``<project>/<location>/<deployment>`` on GCP). The slashes may be sent raw or
+percent-encoded.
 """
 
 from decimal import Decimal
@@ -24,8 +26,11 @@ def _ratio(value: Decimal | None) -> str | None:
 async def ptu_list(rng: Range, session: SessionDep, tenant_id: TenantId) -> dict[str, Any]:
     """Every PTU deployment with utilisation, idle hours, PTU cost and the idle share of it.
 
-    Utilisation values are 0..1 strings; ``hours`` counts hours with data. Reservation
-    purchases (heuristic, see ``ai_cost_tracker.ptu``) are listed apart from PTU cost.
+    Utilisation values are 0..1 strings; ``hours`` counts hours with data. Where the cloud
+    reports no utilisation (AWS Bedrock provisioned throughput) ``utilization_reported`` is
+    false and ``utilization_note`` says so: the nulls mean "not reported", not idle.
+    Reservation purchases (heuristic, see ``ai_cost_tracker.ptu``) are listed apart from PTU
+    cost.
     """
     report = await ptu.ptu_report(session, tenant_id, rng.start, rng.end)
     return {
@@ -47,6 +52,10 @@ async def ptu_list(rng: Range, session: SessionDep, tenant_id: TenantId) -> dict
                 "ptu_cost": money(d.ptu_cost),
                 "idle_cost": None if d.idle_cost is None else money(d.idle_cost),
                 "currency": d.currency,
+                "cloud": d.cloud,
+                "deployment_label": ptu.deployment_label(d.resource_id, d.deployment),
+                "utilization_reported": d.utilization_reported,
+                "utilization_note": d.utilization_note,
             }
             for d in report.deployments
         ],
@@ -71,7 +80,9 @@ async def ptu_hourly(
 ) -> dict[str, Any]:
     """Hourly utilisation (0..1) of one PTU deployment, oldest first."""
     deps = await ptu.ptu_deployments(session, tenant_id, rng.start, rng.end)
-    matches = sorted(k for k in deps if ptu.deployment_key(*k) == deployment_key)
+    matches = sorted(k for k in deps if ptu.deployment_label(*k) == deployment_key)
+    if not matches:
+        matches = sorted(k for k in deps if ptu.deployment_key(*k) == deployment_key)
     if not matches:
         raise HTTPException(404, "unknown PTU deployment")
     if len(matches) > 1:

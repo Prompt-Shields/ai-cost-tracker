@@ -1,0 +1,1 @@
+{"Account": {"Id": "123456789012", "Arn": "arn:aws:organizations::111111111111:account/o-exampleorgid/123456789012", "Email": "ml@example.com", "Name": "ML Platform", "Status": "ACTIVE", "State": "ACTIVE", "JoinedMethod": "CREATED", "JoinedTimestamp": "2024-02-01T09:00:00Z"}}

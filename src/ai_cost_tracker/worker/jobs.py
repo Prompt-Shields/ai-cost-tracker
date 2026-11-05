@@ -507,7 +507,8 @@ async def run_reconcile(
 async def run_price_sync(
     session_factory: SessionFactory, settings: Settings | None = None
 ) -> int | None:
-    """Azure retail prices, then Vertex AI catalog prices when the GCP connector is on.
+    """Azure retail prices, then Vertex AI catalog and Bedrock price list prices when the GCP /
+    AWS connectors are on.
 
     Each source is independent: one failing (e.g. GCP not set up yet) never blocks the other.
     """
@@ -535,6 +536,16 @@ async def run_price_sync(
             total = (total or 0) + count
         except Exception:
             log.exception("GCP price sync failed")
+    if settings is not None and settings.connector != "fake" and settings.aws_enabled:
+        try:  # Public price list: no AWS credentials involved.
+            from ai_cost_tracker.pricing.aws_prices import sync_aws_prices
+
+            async with session_factory() as session:
+                count = await sync_aws_prices(session, regions=settings.aws_regions)
+            log.info("prices: %d AWS rows", count)
+            total = (total or 0) + count
+        except Exception:
+            log.exception("AWS price sync failed")
     return total
 
 

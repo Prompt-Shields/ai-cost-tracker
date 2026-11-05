@@ -115,6 +115,10 @@ async def test_ptu_list(client, seeded):
         "ptu_cost": "1200.0000000000",
         "idle_cost": "720.0000000000",
         "currency": "USD",
+        "cloud": "azure",
+        "deployment_label": "oai-ptu/batch-ptu",
+        "utilization_reported": True,
+        "utilization_note": None,
     }
     assert body["currency"] == "USD"
     assert [x["cost"] for x in body["reservations"]] == ["5000.0000000000"]

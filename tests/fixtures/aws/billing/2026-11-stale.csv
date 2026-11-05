@@ -1,0 +1,2 @@
+line_item_line_item_type,line_item_usage_account_id,line_item_product_code,line_item_usage_type,line_item_usage_start_date,line_item_unblended_cost,line_item_usage_amount,line_item_currency_code,product_region_code
+Usage,111111111111,AmazonBedrock,USE1-Claude3.7Sonnet-input-tokens,2026-11-01T00:00:00Z,999.00,1,USD,us-east-1

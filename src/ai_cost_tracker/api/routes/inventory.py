@@ -53,7 +53,10 @@ async def list_accounts(
 
 @router.get("/clouds")
 async def list_clouds(session: SessionDep, tenant_id: TenantId) -> list[dict[str, Any]]:
-    """Clouds with at least one known account (Azure first), for the overview's cloud filter."""
+    """Clouds with at least one known account (Azure, Google Cloud, AWS), for the cloud filter.
+
+    ``account_noun`` is what one account is called there (subscription / project / account).
+    """
     accounts = await session.execute(
         select(
             CloudAccountRow.cloud,
@@ -77,6 +80,7 @@ async def list_clouds(session: SessionDep, tenant_id: TenantId) -> list[dict[str
         {
             "cloud": cloud,
             "label": q.CLOUD_LABELS.get(cloud, cloud),
+            "account_noun": q.ACCOUNT_NOUNS.get(cloud, "account"),
             "accounts": int(n),
             "tracked_accounts": int(tracked or 0),
             "deployments": int(deployments.get(cloud, 0)),

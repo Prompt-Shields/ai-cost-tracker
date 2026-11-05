@@ -73,6 +73,42 @@ param gcpBillingExportLocation string = ''
 @description('Vertex AI regions to list endpoints in. Empty: the config.py default list.')
 param gcpRegions array = []
 
+// AWS (Bedrock) connection: the managed identity assumes a read-only role in each account via
+// Entra OIDC (no access keys), so nothing here is secret either. Empty values are not set on
+// the containers, so config.py defaults apply. docs/aws-setup.md explains each one.
+@description('Turn on the AWS connector (ACT_AWS_ENABLED).')
+param awsEnabled bool = false
+
+@description('AWS account ids to track. Empty: accounts added in the UI plus discovery.')
+param awsAccountIds array = []
+
+@description('Read-only role the CloudFormation stack creates in each account. Empty: AiCostTrackerReadOnly.')
+param awsRoleName string = ''
+
+@description('Entra token scope exchanged with AWS STS. Empty: api://AzureADTokenExchange/.default.')
+param awsAzureTokenScope string = ''
+
+@description('Bedrock regions to read. Empty: the config.py default list.')
+param awsRegions array = []
+
+@description('Account holding the CUR 2.0 Data Export (normally the management account).')
+param awsExportAccountId string = ''
+
+@description('S3 bucket of the CUR 2.0 Data Export.')
+param awsExportBucket string = ''
+
+@description('S3 prefix of the export. Empty: ai-cost-tracker.')
+param awsExportPrefix string = ''
+
+@description('Data Export name. Empty: ai-cost-tracker-cur2.')
+param awsExportName string = ''
+
+@description('Region of the export bucket. Empty: us-east-1.')
+param awsExportRegion string = ''
+
+@description('Public S3 URL of infra/aws/readonly-role.yaml for one-click quick-create links.')
+param awsCfnTemplateUrl string = ''
+
 @description('Currency every total is reported in. Empty: USD.')
 param reportingCurrency string = ''
 
@@ -191,6 +227,17 @@ module apps 'modules/apps.bicep' = {
     gcpBillingExportTable: gcpBillingExportTable
     gcpBillingExportLocation: gcpBillingExportLocation
     gcpRegions: gcpRegions
+    awsEnabled: awsEnabled
+    awsAccountIds: awsAccountIds
+    awsRoleName: awsRoleName
+    awsAzureTokenScope: awsAzureTokenScope
+    awsRegions: awsRegions
+    awsExportAccountId: awsExportAccountId
+    awsExportBucket: awsExportBucket
+    awsExportPrefix: awsExportPrefix
+    awsExportName: awsExportName
+    awsExportRegion: awsExportRegion
+    awsCfnTemplateUrl: awsCfnTemplateUrl
     reportingCurrency: reportingCurrency
     publicWebUrl: publicWebUrl
     allowedIpRanges: allowedIpRanges

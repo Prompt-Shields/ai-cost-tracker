@@ -21,18 +21,24 @@ def get_connector(settings: Settings) -> Connector:
 def get_connectors(settings: Settings) -> list[Connector]:
     """One connector per cloud the worker should ingest, primary first.
 
-    The fake setup always adds the demo GCP project so the multi-cloud views have data;
-    a real GCP connector joins only when ``gcp_enabled`` is set.
+    The fake setup always adds the demo GCP project and AWS account so the multi-cloud views
+    have data; real GCP / AWS connectors join only when ``gcp_enabled`` / ``aws_enabled``.
     """
     connectors = [get_connector(settings)]
     if settings.connector == "fake":
+        from ai_cost_tracker.connectors.fake_aws import FakeAwsConnector
         from ai_cost_tracker.connectors.fake_gcp import FakeGcpConnector
 
-        connectors.append(FakeGcpConnector())
-    elif settings.gcp_enabled:
+        connectors += [FakeGcpConnector(), FakeAwsConnector()]
+        return connectors
+    if settings.gcp_enabled:
         from ai_cost_tracker.connectors.gcp import GcpConnector
 
         connectors.append(GcpConnector.from_settings(settings))
+    if settings.aws_enabled:
+        from ai_cost_tracker.connectors.aws import AwsConnector
+
+        connectors.append(AwsConnector.from_settings(settings))
     return connectors
 
 

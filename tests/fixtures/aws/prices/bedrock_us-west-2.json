@@ -1,0 +1,81 @@
+{
+ "formatVersion": "v1.0",
+ "disclaimer": "This pricing list is for informational purposes only.",
+ "offerCode": "AmazonBedrock",
+ "version": "20250601000000",
+ "publicationDate": "2025-06-01T00:00:00Z",
+ "products": {
+  "AMAZONUSW20000": {
+   "sku": "AMAZONUSW20000",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrock",
+    "location": "US West (Oregon)",
+    "locationType": "AWS Region",
+    "usagetype": "USW2-NovaPro-input-tokens",
+    "operation": "Usage",
+    "regionCode": "us-west-2",
+    "servicename": "Amazon Bedrock"
+   }
+  },
+  "AMAZONUSW20001": {
+   "sku": "AMAZONUSW20001",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrock",
+    "location": "US West (Oregon)",
+    "locationType": "AWS Region",
+    "usagetype": "USW2-NovaPro-output-tokens",
+    "operation": "Usage",
+    "regionCode": "us-west-2",
+    "servicename": "Amazon Bedrock"
+   }
+  }
+ },
+ "terms": {
+  "OnDemand": {
+   "AMAZONUSW20000": {
+    "AMAZONUSW20000.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "AMAZONUSW20000",
+     "effectiveDate": "2025-02-01T00:00:00Z",
+     "priceDimensions": {
+      "AMAZONUSW20000.JRTCKXETXF.0000000000": {
+       "rateCode": "AMAZONUSW20000.JRTCKXETXF.0000000000",
+       "description": "NovaPro-input-tokens 1K tokens",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1K tokens",
+       "pricePerUnit": {
+        "USD": "0.0008000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "AMAZONUSW20001": {
+    "AMAZONUSW20001.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "AMAZONUSW20001",
+     "effectiveDate": "2025-02-01T00:00:00Z",
+     "priceDimensions": {
+      "AMAZONUSW20001.JRTCKXETXF.0000000000": {
+       "rateCode": "AMAZONUSW20001.JRTCKXETXF.0000000000",
+       "description": "NovaPro-output-tokens 1K tokens",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1K tokens",
+       "pricePerUnit": {
+        "USD": "0.0032000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   }
+  }
+ }
+}

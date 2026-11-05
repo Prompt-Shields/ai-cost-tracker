@@ -1,0 +1,16 @@
+{
+  "_comment": "Assumption (spike-aws): response shape from the STS API reference for AssumeRoleWithWebIdentity; values are fake.",
+  "Credentials": {
+    "AccessKeyId": "ASIAFAKEFAKEFAKE0001",
+    "SecretAccessKey": "fake-secret-access-key-0000000000000000",
+    "SessionToken": "fake-session-token",
+    "Expiration": "2026-11-04T13:00:00+00:00"
+  },
+  "SubjectFromWebIdentityToken": "00000000-0000-0000-0000-000000000001",
+  "AssumedRoleUser": {
+    "AssumedRoleId": "AROAFAKEFAKEFAKE:ai-cost-tracker",
+    "Arn": "arn:aws:sts::111111111111:assumed-role/AiCostTrackerReadOnly/ai-cost-tracker"
+  },
+  "Audience": "api://AzureADTokenExchange",
+  "Provider": "sts.windows.net/00000000-0000-0000-0000-000000000000/"
+}

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { lastNDays, shownCost, type Deployment, type DeploymentDailyRow } from "@/lib/api";
-import { formatCount, formatDay, formatMoney } from "@/lib/format";
+import { formatCount, formatDay, formatMoney, resourceLabel, resourceNoun, skuLabel } from "@/lib/format";
 import { useSession } from "../AuthProvider";
 import { CloudBadge } from "../CloudBadge";
 import { accountNoun } from "../CloudFilter";
@@ -89,26 +89,22 @@ export function DeploymentDetail({ id }: { id: string }) {
 }
 
 function Facts({ d }: { d: Deployment }) {
-  const parts = d.resource_id.split("/").filter(Boolean);
-  // GCP ids end in projects/<project>/locations/<location>; show both, Azure shows the resource name.
-  const resource =
-    d.cloud === "gcp" && parts.length >= 4
-      ? `${parts[parts.length - 3]}/${parts[parts.length - 1]}`
-      : (parts.pop() ?? d.resource_id);
+  // GCP shows project/location, AWS account/region, Azure the Cognitive Services account name.
+  const resource = resourceLabel(d.resource_id);
   const account = accountNoun(d.cloud);
   return (
     <section className={styles.panel} aria-label="Deployment details">
       <dl className={styles.dl}>
         <Fact label="Model" value={d.model} />
         <Fact label="Version" value={d.model_version} />
-        <Fact label="SKU" value={d.sku && (d.capacity != null ? `${d.sku} × ${d.capacity}` : d.sku)} />
+        <Fact label="SKU" value={skuLabel(d.cloud, d.sku, d.capacity)} />
         <Fact label="Region" value={d.region} />
         <Fact
           label={account.charAt(0).toUpperCase() + account.slice(1)}
           value={d.account_name || d.account_id}
           title={d.account_id}
         />
-        <Fact label="Resource" value={resource} title={d.resource_id} />
+        <Fact label={resourceNoun(d.cloud)} value={resource} title={d.resource_id} />
         <div style={{ gridColumn: "1 / -1" }}>
           <dt>Tags</dt>
           <dd>

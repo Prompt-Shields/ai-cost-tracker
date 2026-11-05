@@ -1,0 +1,18 @@
+{
+  "provisionedModelSummaries": [
+    {
+      "provisionedModelName": "nova-pro-prod",
+      "provisionedModelArn": "arn:aws:bedrock:us-east-1:123456789012:provisioned-model/pm0example01",
+      "modelArn": "arn:aws:bedrock:us-east-1:123456789012:custom-model/amazon.nova-pro-v1:0:300k/cm0example01",
+      "desiredModelArn": "arn:aws:bedrock:us-east-1:123456789012:custom-model/amazon.nova-pro-v1:0:300k/cm0example01",
+      "foundationModelArn": "arn:aws:bedrock:us-east-1::foundation-model/amazon.nova-pro-v1:0",
+      "modelUnits": 2,
+      "desiredModelUnits": 2,
+      "status": "InService",
+      "commitmentDuration": "OneMonth",
+      "commitmentExpirationTime": "2025-04-01T00:00:00Z",
+      "creationTime": "2025-03-01T00:00:00Z",
+      "lastModifiedTime": "2025-03-01T00:00:00Z"
+    }
+  ]
+}

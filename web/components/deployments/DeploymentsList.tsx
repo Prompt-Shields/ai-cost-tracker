@@ -3,9 +3,19 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import type { Deployment } from "@/lib/api";
+import { skuLabel } from "@/lib/format";
 import { useSession } from "../AuthProvider";
 import { CloudBadge } from "../CloudBadge";
-import { CloudFilter, cloudFilterStyles, cloudQuery, useClouds, type CloudChoice } from "../CloudFilter";
+import {
+  accountNoun,
+  CloudFilter,
+  cloudFilterStyles,
+  cloudQuery,
+  connectHref,
+  connectPhrase,
+  useClouds,
+  type CloudChoice,
+} from "../CloudFilter";
 import { ExportButton } from "../ExportButton";
 import { EmptyNotice, ErrorNotice, Skeleton, ui as styles, useLoad } from "../ui";
 import { TagChips } from "./TagChips";
@@ -16,7 +26,10 @@ function cloudRank(cloud: string): number {
   return i === -1 ? CLOUD_ORDER.length : i;
 }
 
-/** Every tracked deployment, grouped by account (subscription / project) so ownership reads at a glance. */
+/**
+ * Every tracked deployment, grouped by account (Azure subscription / Google Cloud project / AWS
+ * account) so ownership reads at a glance.
+ */
 export function DeploymentsList() {
   const { api } = useSession();
   const { clouds } = useClouds();
@@ -38,11 +51,15 @@ export function DeploymentsList() {
         .filter(Boolean)
         .some((v) => String(v).toLowerCase().includes(q));
     // Keyed by cloud too: an account id is only unique within its cloud.
-    const byAccount = new Map<string, { name: string; cloud: string; items: Deployment[] }>();
+    const byAccount = new Map<
+      string,
+      { name: string; accountId: string; cloud: string; items: Deployment[] }
+    >();
     for (const d of state.data.filter(match)) {
       const key = `${d.cloud}|${d.account_id}`;
       const g = byAccount.get(key) ?? {
         name: d.account_name || d.account_id,
+        accountId: d.account_id,
         cloud: d.cloud,
         items: [],
       };
@@ -87,10 +104,8 @@ export function DeploymentsList() {
       )}
       {state.status === "ready" && state.data.length === 0 && (
         <EmptyNotice title="No deployments yet">
-          {cloud === "gcp"
-            ? "Connect a Google Cloud project and its Vertex AI models show up here after the next inventory sync. "
-            : "Connect an Azure subscription or Google Cloud project and its AI deployments show up here after the next inventory sync. "}
-          <Link className={styles.link} href={cloud === "gcp" ? "/connect/gcp" : "/connect"}>
+          {`${connectPhrase(cloud === "all" ? null : cloud)} show up here after the next inventory sync. `}
+          <Link className={styles.link} href={connectHref(cloud === "all" ? null : cloud)}>
             Connect a cloud
           </Link>
         </EmptyNotice>
@@ -102,6 +117,11 @@ export function DeploymentsList() {
         <section key={g.id} className={styles.panel}>
           <h2 className={styles.panelTitle} style={{ overflowWrap: "anywhere" }}>
             {g.name}
+            {g.name !== g.accountId && (
+              <span className={styles.muted} style={{ fontWeight: 400, fontSize: 13 }}>
+                {` · ${accountNoun(g.cloud)} ${g.accountId}`}
+              </span>
+            )}
           </h2>
           <div className={styles.tableWrap}>
             <table className={styles.table}>
@@ -132,10 +152,7 @@ export function DeploymentsList() {
                       {d.model ?? "—"}
                       {d.model_version && <span className={styles.muted}> {d.model_version}</span>}
                     </td>
-                    <td>
-                      {d.sku ?? "—"}
-                      {d.capacity != null && <span className={styles.muted}> × {d.capacity}</span>}
-                    </td>
+                    <td>{skuLabel(d.cloud, d.sku, d.capacity) ?? "—"}</td>
                     <td>{d.region ?? "—"}</td>
                     <td>
                       <TagChips tags={d.tags} />

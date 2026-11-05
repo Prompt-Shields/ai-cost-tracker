@@ -24,7 +24,7 @@ from ai_cost_tracker.normalise import canonical_model
 _QUANT = Decimal("0.0000000001")
 _TOKEN_DIRECTIONS = ("input", "output")
 
-# Azure deployment SKU name -> deployment type used in meter names.
+# Deployment SKU name -> deployment type used in meter names (Azure, plus Bedrock PT).
 SKU_DEPLOYMENT_TYPE = {
     "globalstandard": "global",
     "datazonestandard": "data_zone",
@@ -34,6 +34,8 @@ SKU_DEPLOYMENT_TYPE = {
     "provisionedmanaged": "provisioned",
     "globalprovisionedmanaged": "provisioned",
     "datazoneprovisionedmanaged": "provisioned",
+    # Bedrock provisioned throughput (billed per model unit hour, like PTU).
+    "provisionedthroughput": "provisioned",
 }
 
 

@@ -56,7 +56,8 @@ function approxMoney(value: number, currency: string, approximate: boolean): str
 
 /**
  * The cloud a view is about when there is exactly one, so account wording fits ("project" on
- * Google Cloud). Without /clouds (older API) it stays Azure, as before multi-cloud.
+ * Google Cloud, "account" on AWS). Without /clouds (older API) it stays Azure, as before
+ * multi-cloud.
  */
 function singleCloud(choice: CloudChoice, clouds: CloudInfo[]): string | null {
   if (choice !== "all") return choice;

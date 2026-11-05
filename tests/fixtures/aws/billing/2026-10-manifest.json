@@ -1,0 +1,7 @@
+{
+  "executionId": "00000000-0000-0000-0000-000000000001",
+  "billingPeriod": {"start": "2026-10-01T00:00:00Z", "end": "2026-11-01T00:00:00Z"},
+  "dataFiles": [
+    "s3://act-cur-bucket/ai-cost-tracker/ai-cost-tracker-cur2/data/BILLING_PERIOD=2026-10/ai-cost-tracker-cur2-00001.csv.gz"
+  ]
+}

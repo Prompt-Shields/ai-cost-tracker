@@ -60,6 +60,31 @@ class Settings(BaseSettings):
     # Vertex AI regions to list endpoints in ("global" covers the global endpoint).
     gcp_regions: list[str] = ["global", "us-central1", "us-east4", "europe-west4"]
 
+    # AWS (M4, ARCHITECTURE.md §8). Runs alongside Azure (and GCP) when enabled; the fake
+    # connector always brings a demo AWS account. No access keys: the app's Azure managed
+    # identity token is exchanged for AWS credentials with AssumeRoleWithWebIdentity, into a
+    # read-only role each account creates from our CloudFormation template.
+    aws_enabled: bool = False
+    # Accounts to track. Empty means every account in the organization (listed through the
+    # export account's role) where Bedrock is in use.
+    aws_account_ids: list[str] = []
+    # Name of the read-only role the CloudFormation template creates in every account.
+    aws_role_name: str = "AiCostTrackerReadOnly"
+    # Entra scope requested for the web identity token handed to AWS STS.
+    aws_azure_token_scope: str = "api://AzureADTokenExchange/.default"
+    # Regions to read Bedrock metrics and inventory from.
+    aws_regions: list[str] = ["us-east-1", "us-west-2", "eu-central-1"]
+    # Where the CUR 2.0 Data Export lands (usually the management account): its account id,
+    # S3 bucket, prefix, export name and bucket region.
+    aws_export_account_id: str = ""
+    aws_export_bucket: str = ""
+    aws_export_prefix: str = "ai-cost-tracker"
+    aws_export_name: str = "ai-cost-tracker-cur2"
+    aws_export_region: str = "us-east-1"
+    # Public S3 URL of infra/aws/readonly-role.yaml, for the CloudFormation quick-create
+    # link. Empty: onboarding shows the template and an `aws cloudformation deploy` command.
+    aws_cfn_template_url: str = ""
+
     # Currency every total is reported in; other billing currencies are converted with the
     # daily ECB reference rate (fx.py).
     reporting_currency: str = "USD"

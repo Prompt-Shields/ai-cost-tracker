@@ -16,6 +16,12 @@ Report maths, per provisioned deployment and day range:
 - ``idle_cost = ptu_cost x (1 - avg_utilization)``: the share of spend that bought unused
   capacity. Null when there is no utilisation data.
 
+Clouds that don't publish utilisation (``UNREPORTED_UTILIZATION``: Bedrock provisioned
+throughput has no utilisation metric in CloudWatch, Assumption (spike-aws), so the AWS
+connector returns no samples) still list their provisioned deployments with cost, but with
+``utilization_reported`` False: utilisation, idle hours and idle cost are null/0 meaning "not
+reported", never 0% or idle.
+
 Reservation purchases are listed separately, never mixed into ``ptu_cost``. Heuristic
 (unverified, #2): a cost line whose meter or service name contains "reservation" or
 "reserved". Two known gaps: hours covered by a reservation bill PTU meters at 0 in actual
@@ -61,6 +67,8 @@ DEFAULT_CURRENCY = "USD"
 _UTIL_PLACES = Decimal("0.0001")  # matches Numeric(7, 4)
 _MONEY_PLACES = Decimal("0.0000000001")  # matches Numeric(20, 10)
 _RESERVATION_WORDS = ("reservation", "reserved")
+# Clouds whose connector reports no PTU utilisation, and how the report says so.
+UNREPORTED_UTILIZATION = {"aws": "Utilisation not reported by AWS"}
 
 
 # --- ingest ----------------------------------------------------------------------------
@@ -284,6 +292,9 @@ class PtuDeploymentReport:
     ptu_cost: Decimal
     idle_cost: Decimal | None
     currency: str
+    cloud: str = "azure"
+    utilization_reported: bool = True
+    utilization_note: str | None = None  # why there is no utilisation, when there is none
 
 
 @dataclass
@@ -305,9 +316,21 @@ class PtuReport:
 
 
 def deployment_key(resource_id: str, deployment: str) -> str:
-    """``<account resource name>/<deployment>``, the id the API and UI use for a deployment."""
+    """``<account resource name>/<deployment>``, the id the API and UI use for a deployment.
+
+    On GCP/AWS the last segment is only the location/region, so this can collide across
+    projects/accounts; ``deployment_label`` is the unique form and the hourly route takes both.
+    """
     resource = resource_id.rstrip("/").rsplit("/", 1)[-1] or resource_id
     return f"{resource}/{deployment}"
+
+
+def deployment_label(resource_id: str, deployment: str) -> str:
+    """Unique key: ``<project|account>/<location|region>/<deployment>`` on GCP/AWS, else the key."""
+    # Lazy: the report is domain code; only the label format is shared with the API layer.
+    from ai_cost_tracker.api.queries import deployment_label as label
+
+    return label(resource_id, deployment)
 
 
 def looks_like_reservation(sku_meter: str, service_name: str | None) -> bool:
@@ -340,6 +363,7 @@ class _Dep:
     sku: str | None = None
     capacity: int | None = None
     values: list[Decimal] = field(default_factory=list)
+    cloud: str = "azure"
 
 
 async def ptu_deployments(
@@ -357,7 +381,7 @@ async def ptu_deployments(
     for r in rows:
         if is_provisioned(r.sku):
             deps[(r.resource_id, r.name)] = _Dep(
-                r.resource_id, r.account_id, r.name, r.model, r.sku, r.capacity
+                r.resource_id, r.account_id, r.name, r.model, r.sku, r.capacity, cloud=r.cloud
             )
     samples = await session.execute(
         select(
@@ -365,25 +389,30 @@ async def ptu_deployments(
             PtuUtilization.account_id,
             PtuUtilization.deployment,
             PtuUtilization.utilization,
+            PtuUtilization.cloud,
         ).where(
             PtuUtilization.tenant_id == tenant_id,
             PtuUtilization.bucket_start >= lo,
             PtuUtilization.bucket_start < hi,
         )
     )
-    for resource_id, account_id, name, value in samples:
+    for resource_id, account_id, name, value, cloud in samples:
         dep = deps.get((resource_id, name))
         if dep is None:
-            dep = deps[(resource_id, name)] = _Dep(resource_id, account_id, name)
+            dep = deps[(resource_id, name)] = _Dep(resource_id, account_id, name, cloud=cloud)
         dep.values.append(_dec(value).quantize(_UTIL_PLACES))
     return deps
 
 
-def _shares(deps: Iterable[_Dep]) -> dict[tuple[str, str], Decimal]:
-    """Each deployment's share of its resource's PTU cost: by capacity, else equal."""
-    by_resource: dict[str, list[_Dep]] = defaultdict(list)
+def _shares(deps: Iterable[_Dep], by_model: bool = False) -> dict[tuple[str, str], Decimal]:
+    """Each deployment's share of its resource's PTU cost: by capacity, else equal.
+
+    ``by_model`` groups by (resource, model) instead, for charges that name their model.
+    """
+    by_resource: dict[tuple[str, str], list[_Dep]] = defaultdict(list)
     for d in deps:
-        by_resource[d.resource_id.lower()].append(d)
+        model = (d.model or "").lower() if by_model else ""
+        by_resource[(d.resource_id.lower(), model)].append(d)
     shares: dict[tuple[str, str], Decimal] = {}
     for group in by_resource.values():
         total = sum((d.capacity or 0) for d in group)
@@ -410,7 +439,11 @@ async def ptu_report(
         )
     )
     ptu_resources = {d.resource_id.lower() for d in deps.values()}
+    ptu_models = {(d.resource_id.lower(), (d.model or "").lower()) for d in deps.values()}
     cost_by_resource: dict[str, Decimal] = defaultdict(Decimal)
+    # Charges naming a model a PTU deployment serves (Bedrock bills provisioned throughput per
+    # model) go to that model's deployments; Azure PTU meters name none and split by resource.
+    cost_by_model: dict[tuple[str, str], Decimal] = defaultdict(Decimal)
     currencies: set[str] = set()
     reservations: list[ReservationPurchase] = []
     for line in lines:
@@ -428,22 +461,31 @@ async def ptu_report(
             )
             currencies.add(line.billing_currency)
         elif (line.resource_id or "").lower() in ptu_resources and _is_ptu_charge(line):
-            cost_by_resource[line.resource_id.lower()] += _dec(line.billed_cost)
+            model_key = (line.resource_id.lower(), (line.ai_model or "").lower())
+            if line.ai_model and model_key in ptu_models:
+                cost_by_model[model_key] += _dec(line.billed_cost)
+            else:
+                cost_by_resource[line.resource_id.lower()] += _dec(line.billed_cost)
             currencies.add(line.billing_currency)
     # v1 subscriptions bill in one currency; anything mixed falls back to the default.
     currency = currencies.pop() if len(currencies) == 1 else DEFAULT_CURRENCY
 
     shares = _shares(deps.values())
+    model_shares = _shares(deps.values(), by_model=True)
     out = []
     for key, d in sorted(deps.items(), key=lambda kv: deployment_key(*kv[0])):
-        cost = (cost_by_resource.get(d.resource_id.lower(), Decimal(0)) * shares[key]).quantize(
-            _MONEY_PLACES
-        )
+        resource = d.resource_id.lower()
+        model_cost = cost_by_model.get((resource, (d.model or "").lower()), Decimal(0))
+        cost = (
+            cost_by_resource.get(resource, Decimal(0)) * shares[key]
+            + model_cost * model_shares[key]
+        ).quantize(_MONEY_PLACES)
         avg = peak = idle_cost = None
         if d.values:
             avg = (sum(d.values) / len(d.values)).quantize(_UTIL_PLACES)
             peak = max(d.values)
             idle_cost = (cost * (1 - avg)).quantize(_MONEY_PLACES)
+        note = None if d.values else UNREPORTED_UTILIZATION.get(d.cloud)
         out.append(
             PtuDeploymentReport(
                 resource_id=d.resource_id,
@@ -459,6 +501,9 @@ async def ptu_report(
                 ptu_cost=cost,
                 idle_cost=idle_cost,
                 currency=currency,
+                cloud=d.cloud,
+                utilization_reported=note is None,
+                utilization_note=note,
             )
         )
     reservations.sort(key=lambda r: (r.day, r.account_id, r.sku_meter))

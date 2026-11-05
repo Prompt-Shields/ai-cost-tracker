@@ -4,12 +4,14 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { DiscoveredAccount } from "@/lib/api-connect";
 import { CloudBadge } from "./CloudBadge";
+import { accountNoun } from "./CloudFilter";
 import { errorMessage } from "./connect/format";
 import { useConnectApi, useIsAdmin } from "./connect/hooks";
 import styles from "./DiscoveryBanner.module.css";
 
 /**
- * "N new subscriptions (or projects) with AI resources found", from the daily discovery job. Renders nothing
+ * "N new subscriptions / projects / accounts with AI resources found", from the daily discovery
+ * job (the noun follows the cloud: Azure, Google Cloud, AWS). Renders nothing
  * when there are none or the request fails: it is a nudge, not something to report errors on.
  */
 export function DiscoveryBanner({ onTracked }: { onTracked?: () => void }) {
@@ -60,10 +62,9 @@ export function DiscoveryBanner({ onTracked }: { onTracked?: () => void }) {
   }
 
   const n = items.length;
-  // "subscription" / "project" when every item is from one cloud, "account" when mixed.
-  const clouds = new Set(items.map((a) => a.cloud));
-  const noun =
-    clouds.size > 1 ? "account" : clouds.has("gcp") ? "project" : "subscription";
+  // The cloud's own noun when every item is from one cloud ("account" on AWS), "account" when mixed.
+  const clouds = [...new Set(items.map((a) => a.cloud))];
+  const noun = accountNoun(clouds.length === 1 ? clouds[0] : null);
   return (
     <section className={styles.banner} aria-label="Newly discovered accounts">
       <div className={styles.head}>

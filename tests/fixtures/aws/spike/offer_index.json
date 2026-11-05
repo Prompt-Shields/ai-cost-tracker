@@ -1,0 +1,7 @@
+{
+  "formatVersion": "v1.0",
+  "offers": {
+    "AmazonBedrock": {"offerCode": "AmazonBedrock", "currentVersionUrl": "/offers/v1.0/aws/AmazonBedrock/current/index.json", "currentRegionIndexUrl": "/offers/v1.0/aws/AmazonBedrock/current/region_index.json"},
+    "AmazonEC2": {"offerCode": "AmazonEC2"}
+  }
+}

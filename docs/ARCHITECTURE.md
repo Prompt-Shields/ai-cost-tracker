@@ -1,7 +1,7 @@
 # AI Cost Tracker: Architecture Plan (Draft v0.1)
 
 Status: **Draft for review** (v0.5: one-click onboarding; product shape, hosting, frontend, attribution and billing scope decided, see §2a).
-Owner: Prompt Shields. Last updated: 2026-11-04 (M3: GCP, §8).
+Owner: Prompt Shields. Last updated: 2026-11-05 (M4: AWS, §8).
 
 ## 1. Problem
 
@@ -255,7 +255,7 @@ recorded per subscription and source in `sync_state`, which drives the health pa
 | usage | Every 5 min | Azure Monitor token metrics, hourly buckets, from the subscription's watermark minus 1 h overlap (2 h if none); catch-up capped at 7 days, longer gaps need a backfill. Then estimates for yesterday..today. |
 | cost | Every 4 h | Query API for the previous and current calendar month (pay-as-you-go invoice periods are approximated as calendar months, §4.5), then reconcile. Each subscription waits a deterministic delay (hash of its id, up to 15 min) to spread Cost Management load. |
 | backfill | On connect / track | 30 days of usage in 7-day chunks, then 12 months of cost one month at a time, newest first; progress saved after each chunk and resumed if interrupted. Job id `backfill:<cloud>:<account>` so duplicates collapse. |
-| prices | Daily | Retail Prices API for AI meters, then the Cloud Billing Catalog for Vertex AI SKUs when GCP is enabled; a new row only when a price changes, so old estimates stay reproducible. |
+| prices | Daily | Retail Prices API for AI meters, then the Cloud Billing Catalog for Vertex AI SKUs and the public AWS price list for Bedrock when those clouds are enabled; a new row only when a price changes, so old estimates stay reproducible. |
 | fx | Daily (17:11 UTC) | ECB euro reference rates into `fx_rate` (§6). Skipped with the fake connector, whose demo GCP project bills at a fixed demo rate. |
 | discovery | Daily | Subscriptions visible to the managed identity with AI resources but not yet known are added untracked and raise a "new subscription" banner. |
 | access check | Every 10 min | "Waiting for access" subscriptions connect themselves when the Reader role appears (then backfill); tracked ones that lose access are flagged `no_access` with an alert. |
@@ -390,15 +390,54 @@ Each cloud implements the same `Connector` interface and emits FOCUS cost rows p
   docs and marked `Assumption (spike-gcp)` in the code. `act spike-gcp --project <id>` checks
   them on a live project and writes a sanitised report.
 
-### Phase 4 — AWS (Bedrock)
+### Phase 4 — AWS (Bedrock) — built in M4
 
 | Data | Source |
 |------|--------|
-| Billed cost | **AWS Data Exports** (CUR 2.0 or FOCUS) to S3; read via Athena or direct Parquet |
-| Token usage | **CloudWatch** `AWS/Bedrock` metrics (input / output token count, invocations, by model ID); optional Bedrock model-invocation logs for per-request detail |
-| Inventory | Bedrock API (provisioned throughput, inference profiles) |
-| Prices | AWS Price List API |
-| Auth | **Cross-account IAM role** with External ID, deployed by a CloudFormation quick-create link from the wizard; read-only policy scoped to the export bucket, CloudWatch and Bedrock list/describe. |
+| Billed cost | **AWS Data Exports** (CUR 2.0) to S3, CSV + GZIP, read directly from S3 (no Athena) |
+| Token usage | **CloudWatch** `AWS/Bedrock` metrics (input / output / cache token counts, invocations, by `ModelId`) |
+| Inventory | Organizations (accounts), Bedrock API (application inference profiles, provisioned throughput) plus models seen in CloudWatch |
+| Prices | Public AWS price list offer files (no credentials) |
+| Auth | **Read-only role per account, no access keys**: the app's Azure managed identity token is exchanged with `sts:AssumeRoleWithWebIdentity`; the role is created by our CloudFormation template |
+
+**How it works** (`connectors/aws/`, setup in [docs/aws-setup.md](aws-setup.md)):
+
+- **Auth, no keys** (`auth.py`): the managed identity gets an Entra token for
+  `ACT_AWS_AZURE_TOKEN_SCOPE`; STS `AssumeRoleWithWebIdentity` exchanges it for one-hour
+  credentials in `arn:aws:iam::<account>:role/<ACT_AWS_ROLE_NAME>`, cached per account.
+  Each account's CloudFormation stack (`infra/aws/readonly-role.yaml`) creates an IAM OIDC
+  provider for our Entra tenant and the role, trusted only for tokens whose `aud` and `sub`
+  (the managed identity's object id) match. There is **no External ID**: it protects trust
+  granted to another AWS principal, and we have none; the `aud`/`sub` conditions do that job.
+  The export (management) account's stack also creates the S3 bucket and the CUR 2.0 export,
+  selecting exactly the columns `billing.CUR_COLUMNS` reads (the app fills them in when it
+  serves `/api/v1/aws/template.yaml`, so template and reader can't drift).
+- **Model**: account = AWS account; resource = Bedrock in one account and region
+  (`//bedrock.amazonaws.com/accounts/<id>/regions/<region>`, `ids.py`); deployment = a model
+  as CloudWatch's `ModelId` names it (on-demand model or cross-region inference profile), an
+  application inference profile, or a provisioned throughput (`sku` "ProvisionedThroughput",
+  treated like Azure PTU: billed only, shown in the PTU report without utilisation, which
+  Bedrock doesn't report). Labels render as `<account>/<region>/<deployment>`.
+- **Cost** (`billing.py`): the month's manifest (or newest execution folder), gzip CSV
+  streamed row by row; Bedrock and "Amazon Bedrock Edition" Marketplace rows for the account,
+  per UTC day, region and region-stripped usage type; unblended cost net of credits, tax
+  excluded, zero-cost rows kept. The first export delivery can take up to 24 h.
+- **Tokens** (`metrics.py`): `ListMetrics` then `GetMetricData` (hourly Sum, ≤500 queries per
+  call, 7-day chunks) per region; cache read/write tokens are added to input. A region that
+  is denied or not enabled is skipped. CloudWatch lists metrics for about two weeks, so older
+  backfills also query known deployments by name.
+- **Prices** (`pricing/aws_prices.py`, `normalise/aws_usage.py` + `aws_usage_rules.json`):
+  usage types and ModelIds canonicalise to the same model names
+  (`Claude3.7Sonnet-input-tokens` and `us.anthropic.claude-3-7-sonnet-20250219-v1:0` ->
+  `claude-3-7-sonnet`); Marketplace `MP:` usage types name no model and go to the unmapped
+  queue.
+- **Onboarding**: "Connect AWS" (`/connect/aws`) adds an account by id, checks access, and shows
+  a CloudFormation quick-create link (when `ACT_AWS_CFN_TEMPLATE_URL` is set) or the
+  `aws cloudformation deploy` command; a shareable page per account carries the same for the
+  account owner. Waiting accounts connect themselves when the role appears.
+- **Unverified**: usage-type spellings, CUR layout and columns, metric names, the Entra
+  issuer/audience the OIDC provider must trust and API shapes are from AWS's public docs and
+  marked `Assumption (spike-aws)`; `act spike-aws --account <id>` checks them on a live account.
 
 ### Also on the roadmap
 
@@ -477,7 +516,7 @@ ai-cost-tracker/
 | **2. Make it useful** (3–4 wks) | Budgets & alerts (email, Slack, Teams), spike detection, PTU utilisation & idle-capacity report, tag-based allocation to cost centres, deployment naming / tagging convention with an untagged-spend report, shared-deployment split rules, CSV export & API. | The team uses it instead of Cost Analysis for AI spend reviews. |
 | **2b. Open to external users** (3 wks, when we decide to) | Self-serve signup, Entra admin-consent connection wizard, Google login, SAML, tenant admin pages, usage limits. | First design-partner tenant onboarded without engineering help. |
 | **3. GCP** (3 wks) | WIF connection, BigQuery billing export, Vertex AI metrics & inventory, catalog prices, reporting currency. Built in M3; live checks pending (`act spike-gcp`). | Unified multi-cloud overview. |
-| **4. AWS** (3 wks) | CloudFormation role, Data Exports, Bedrock CloudWatch metrics & inventory. | Three clouds in one view. |
+| **4. AWS** (3 wks) | CloudFormation role, Data Exports, Bedrock CloudWatch metrics & inventory, price list. Built in M4; live checks pending (`act spike-aws`). | Three clouds in one view. |
 | **5. Beyond** | Gateway usage ingestion for per-user / per-route attribution (once the gateway fronts Azure traffic), direct model providers, forecasting, recommendations (model swaps, PTU right-sizing), API-level links to the Prompt Shields registry. | — |
 
 ## 14. Risks

@@ -260,7 +260,7 @@ async def test_gcp_projects_listed_with_gcp_wording(client, session, tenant_id):
     assert "Workload Identity Federation" in usage["message"]
     assert "ACT_GCP_WIF_AUDIENCE" in usage["fix"]
     waiting = by_id["new-proj"]["sources"]["inventory"]
-    assert waiting["message"] == "Waiting for someone to grant access"
+    assert waiting["message"].startswith("Waiting for")
     assert "gcloud projects add-iam-policy-binding new-proj" in waiting["fix"]
 
 
@@ -284,3 +284,74 @@ async def test_track_gcp_project(client, session, tenant_id, principal, enqueued
 
     bad = await client.post("/api/v1/connections/same-id-x/track?cloud=ibm", json={"tracked": True})
     assert bad.status_code == 422
+
+
+# --- AWS accounts -----------------------------------------------------------------------
+
+
+def _aws(tenant_id, account_id, name, **kw) -> CloudAccountRow:
+    return CloudAccountRow(tenant_id=tenant_id, cloud="aws", account_id=account_id, name=name, **kw)
+
+
+async def test_aws_accounts_listed_with_aws_wording(client, session, tenant_id):
+    session.add_all(
+        [
+            _aws(tenant_id, "123456789012", "AI Prod"),
+            _aws(tenant_id, "210987654321", "New", access_status="waiting_for_access"),
+            _aws(tenant_id, "999988887777", "Lost", access_status="no_access"),
+            SyncState(
+                tenant_id=tenant_id,
+                cloud="aws",
+                account_id="123456789012",
+                source="cost",
+                last_error="AwsAccessDenied: AccessDenied on s3:GetObject",
+            ),
+            SyncState(
+                tenant_id=tenant_id,
+                cloud="aws",
+                account_id="123456789012",
+                source="usage",
+                last_error="ClientAuthenticationError: credential unavailable",
+            ),
+            SyncState(
+                tenant_id=tenant_id,
+                cloud="aws",
+                account_id="123456789012",
+                source="inventory",
+                last_error="Client error '403 Forbidden'",
+            ),
+        ]
+    )
+    await session.commit()
+    by_id = {c["account_id"]: c for c in (await client.get("/api/v1/connections")).json()}
+    prod = by_id["123456789012"]
+    assert prod["cloud"] == "aws"
+    cost = prod["sources"]["cost"]
+    assert cost["message"] == "Read-only role missing or not trusted in account 123456789012"
+    assert "aws cloudformation deploy" in cost["fix"] and "az role" not in cost["fix"]
+    assert "account 123456789012" in cost["fix"]
+    usage = prod["sources"]["usage"]
+    assert "AWS" in usage["message"] and "az " not in (usage["fix"] or "")
+    inventory = prod["sources"]["inventory"]
+    assert "role" in inventory["message"] and "account 123456789012" in inventory["message"]
+    assert "aws cloudformation deploy" in inventory["fix"]
+
+    waiting = by_id["210987654321"]["sources"]["inventory"]
+    assert waiting["message"].startswith("Waiting for")
+    assert "aws cloudformation deploy" in waiting["fix"]
+    assert f"AzurePrincipalId={PRINCIPAL_ID}" in waiting["fix"]
+    lost = by_id["999988887777"]["sources"]["cost"]
+    assert "role" in lost["message"] and "account 999988887777" in lost["message"]
+    assert "subscription" not in lost["message"]
+
+
+async def test_track_aws_account(client, session, tenant_id, principal, enqueued):
+    principal[0] = ADMIN
+    session.add(_aws(tenant_id, "123456789012", "AI Prod", tracked=False, has_ai_resources=True))
+    await session.commit()
+    resp = await client.post(
+        "/api/v1/connections/123456789012/track?cloud=aws", json={"tracked": True}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["cloud"] == "aws" and resp.json()["tracked"] is True
+    assert enqueued == [("123456789012", "aws")]

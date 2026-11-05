@@ -22,7 +22,7 @@ export type DayStatus = "estimated" | "billed" | "finalised";
 export type Cloud = "azure" | "gcp" | "aws";
 
 /**
- * `account` is a subscription on Azure and a project on Google Cloud; `cloud` puts each cloud
+ * `account` is a subscription on Azure, a project on Google Cloud and an account on AWS; `cloud` puts each cloud
  * in its own series; `tag:<key>` groups by that tag's value.
  */
 export type GroupBy = "model" | "deployment" | "account" | "cloud" | `tag:${string}`;
@@ -77,10 +77,12 @@ export interface Summary {
   by_cloud: CloudSummary[];
 }
 
-/** GET /clouds: clouds with at least one account, Azure first. */
+/** GET /clouds: clouds with at least one account, ordered Azure, Google Cloud, AWS. */
 export interface CloudInfo {
   cloud: string;
   label: string;
+  /** "subscription" / "project" / "account" (newer APIs only). */
+  account_noun?: string;
   accounts: number;
   tracked_accounts: number;
   deployments: number;

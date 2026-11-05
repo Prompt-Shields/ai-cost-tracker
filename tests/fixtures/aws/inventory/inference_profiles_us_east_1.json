@@ -1,0 +1,28 @@
+{
+  "inferenceProfileSummaries": [
+    {
+      "inferenceProfileName": "support-bot",
+      "description": "Support assistant traffic",
+      "createdAt": "2025-01-15T10:00:00Z",
+      "updatedAt": "2025-01-15T10:00:00Z",
+      "inferenceProfileArn": "arn:aws:bedrock:us-east-1:123456789012:application-inference-profile/abc123def456",
+      "models": [
+        {"modelArn": "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-5-haiku-20241022-v1:0"}
+      ],
+      "inferenceProfileId": "abc123def456",
+      "status": "ACTIVE",
+      "type": "APPLICATION"
+    },
+    {
+      "inferenceProfileName": "research-cross-region",
+      "inferenceProfileArn": "arn:aws:bedrock:us-east-1:123456789012:application-inference-profile/zz9xy8",
+      "models": [
+        {"modelArn": "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-7-sonnet-20250219-v1:0"},
+        {"modelArn": "arn:aws:bedrock:us-west-2::foundation-model/anthropic.claude-3-7-sonnet-20250219-v1:0"}
+      ],
+      "inferenceProfileId": "zz9xy8",
+      "status": "ACTIVE",
+      "type": "APPLICATION"
+    }
+  ]
+}

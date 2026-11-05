@@ -1,0 +1,6 @@
+{
+  "Metrics": [
+    {"Namespace": "AWS/Bedrock", "MetricName": "InputTokenCount", "Dimensions": [{"Name": "ModelId", "Value": "amazon.nova-pro-v1:0"}]},
+    {"Namespace": "AWS/Bedrock", "MetricName": "OutputTokenCount", "Dimensions": [{"Name": "ModelId", "Value": "amazon.nova-pro-v1:0"}]}
+  ]
+}

@@ -331,6 +331,7 @@ async def test_clouds(client, seeded):
         {
             "cloud": "azure",
             "label": "Azure",
+            "account_noun": "subscription",
             "accounts": 2,
             "tracked_accounts": 1,
             "deployments": 1,
@@ -338,6 +339,7 @@ async def test_clouds(client, seeded):
         {
             "cloud": "gcp",
             "label": "Google Cloud",
+            "account_noun": "project",
             "accounts": 1,
             "tracked_accounts": 1,
             "deployments": 1,
