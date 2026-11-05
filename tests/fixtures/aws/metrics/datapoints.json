@@ -1,0 +1,27 @@
+{
+  "_comment": "region -> ModelId -> metric -> hour start (UTC) -> Sum. The fake answers GetMetricData from this, keeping points in [StartTime, EndTime).",
+  "us-east-1": {
+    "anthropic.claude-3-5-haiku-20241022-v1:0": {
+      "InputTokenCount": {"2025-03-08T20:00:00Z": 1200, "2025-03-08T21:00:00Z": 800},
+      "OutputTokenCount": {"2025-03-08T20:00:00Z": 150, "2025-03-08T21:00:00Z": 90},
+      "Invocations": {"2025-03-08T20:00:00Z": 6, "2025-03-08T21:00:00Z": 4},
+      "InvocationLatency": {"2025-03-08T20:00:00Z": 99999}
+    },
+    "us.anthropic.claude-3-7-sonnet-20250219-v1:0": {
+      "InputTokenCount": {"2025-03-08T22:00:00Z": 5000, "2025-03-09T00:00:00Z": 777},
+      "CacheReadInputTokenCount": {"2025-03-08T22:00:00Z": 2000},
+      "CacheWriteInputTokenCount": {"2025-03-08T22:00:00Z": 300},
+      "OutputTokenCount": {"2025-03-08T22:00:00Z": 700},
+      "Invocations": {"2025-03-08T22:00:00Z": 3, "2025-03-08T19:00:00Z": 50}
+    },
+    "amazon.titan-embed-text-v2:0": {
+      "Invocations": {"2025-03-08T23:00:00Z": 0}
+    }
+  },
+  "eu-west-1": {
+    "eu.amazon.nova-pro-v1:0": {
+      "InputTokenCount": {"2025-03-08T23:00:00Z": 40.0},
+      "Invocations": {"2025-03-08T23:00:00Z": 1}
+    }
+  }
+}
