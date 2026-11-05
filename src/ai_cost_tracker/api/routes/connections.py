@@ -150,12 +150,15 @@ def _connection(
             account.access_status,
             account_id=account.account_id,
             principal_id=settings.azure_principal_id,
+            cloud=account.cloud,
+            aws_role_name=settings.aws_role_name,
         )
         message, fix = h.message, h.fix
         if account.cloud == "gcp":
             message, fix = _gcp_wording(account.account_id, message, fix, settings)
         elif account.cloud == "aws":
-            message, fix = _aws_wording(account.account_id, message, fix, settings)
+            raw = (state(source).last_error if state(source) else None) or ""
+            message, fix = _aws_wording(account.account_id, message, fix, settings, raw)
         sources[source] = {
             "status": h.status,
             "last_success_at": utc_iso(h.last_success_at),
@@ -203,7 +206,7 @@ _AWS_DENIED = ("AccessDenied", "not authorized", "UnauthorizedOperation", "Inval
 
 
 def _aws_wording(
-    account_id: str, message: str, fix: str | None, settings: Settings
+    account_id: str, message: str, fix: str | None, settings: Settings, raw_error: str = ""
 ) -> tuple[str, str | None]:
     """``health.describe`` speaks Azure; say it the AWS way.
 
@@ -216,13 +219,15 @@ def _aws_wording(
             settings, export_account=aws_onboarding.is_export_account(settings, account_id)
         )
     )
-    if any(code.lower() in message.lower() for code in _AWS_DENIED):
+    text = f"{message} {raw_error}".lower()
+    if any(code.lower() in text for code in _AWS_DENIED):
         return f"Read-only role missing or not trusted in account {account_id}", stack_fix
     message = message.replace(
         "Reader role missing on subscription", "Read-only role missing in account"
     )
     message = message.replace("subscription", "account")
-    if fix and "az role assignment" in fix:
+    if fix and ("az role assignment" in fix or "CloudFormation stack" in fix):
+        # health.describe's generic advice; give the exact command for this account.
         fix = stack_fix
     elif fix and "managed identity" in fix:
         message = "The app could not sign in to AWS (Entra token for AssumeRoleWithWebIdentity)"

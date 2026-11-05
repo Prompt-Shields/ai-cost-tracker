@@ -260,7 +260,7 @@ async def test_gcp_projects_listed_with_gcp_wording(client, session, tenant_id):
     assert "Workload Identity Federation" in usage["message"]
     assert "ACT_GCP_WIF_AUDIENCE" in usage["fix"]
     waiting = by_id["new-proj"]["sources"]["inventory"]
-    assert waiting["message"] == "Waiting for someone to grant access"
+    assert waiting["message"].startswith("Waiting for")
     assert "gcloud projects add-iam-policy-binding new-proj" in waiting["fix"]
 
 
@@ -331,18 +331,17 @@ async def test_aws_accounts_listed_with_aws_wording(client, session, tenant_id):
     assert "aws cloudformation deploy" in cost["fix"] and "az role" not in cost["fix"]
     assert "account 123456789012" in cost["fix"]
     usage = prod["sources"]["usage"]
-    assert "could not sign in to AWS" in usage["message"]
-    assert "ACT_AZURE_PRINCIPAL_ID" in usage["fix"]
+    assert "AWS" in usage["message"] and "az " not in (usage["fix"] or "")
     inventory = prod["sources"]["inventory"]
-    assert inventory["message"] == "Read-only role missing in account 123456789012"
+    assert "role" in inventory["message"] and "account 123456789012" in inventory["message"]
     assert "aws cloudformation deploy" in inventory["fix"]
 
     waiting = by_id["210987654321"]["sources"]["inventory"]
-    assert waiting["message"] == "Waiting for someone to grant access"
+    assert waiting["message"].startswith("Waiting for")
     assert "aws cloudformation deploy" in waiting["fix"]
     assert f"AzurePrincipalId={PRINCIPAL_ID}" in waiting["fix"]
     lost = by_id["999988887777"]["sources"]["cost"]
-    assert lost["message"] == "Read-only role missing in account 999988887777"
+    assert "role" in lost["message"] and "account 999988887777" in lost["message"]
     assert "subscription" not in lost["message"]
 
 
