@@ -1,0 +1,16 @@
+{
+  "formatVersion": "v1.0",
+  "offerCode": "AmazonBedrock",
+  "products": {
+    "SKU1": {"sku": "SKU1", "productFamily": "Amazon Bedrock", "attributes": {"usagetype": "USE1-Claude3.7Sonnet-input-tokens", "regionCode": "us-east-1", "model": "Claude 3.7 Sonnet"}},
+    "SKU2": {"sku": "SKU2", "productFamily": "Amazon Bedrock", "attributes": {"usagetype": "USE1-Claude3.7Sonnet-output-tokens", "regionCode": "us-east-1", "model": "Claude 3.7 Sonnet"}},
+    "SKU3": {"sku": "SKU3", "productFamily": "Amazon Bedrock", "attributes": {"usagetype": "USE1-NovaPro-ProvisionedThroughput-ModelUnits", "regionCode": "us-east-1"}}
+  },
+  "terms": {
+    "OnDemand": {
+      "SKU1": {"SKU1.T1": {"priceDimensions": {"SKU1.T1.R1": {"unit": "1K tokens", "pricePerUnit": {"USD": "0.003"}}}}},
+      "SKU2": {"SKU2.T1": {"priceDimensions": {"SKU2.T1.R1": {"unit": "1K tokens", "pricePerUnit": {"USD": "0.015"}}}}},
+      "SKU3": {"SKU3.T1": {"priceDimensions": {"SKU3.T1.R1": {"unit": "Hrs", "pricePerUnit": {"USD": "20.5"}}}}}
+    }
+  }
+}

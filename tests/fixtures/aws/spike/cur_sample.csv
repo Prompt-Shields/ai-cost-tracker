@@ -1,0 +1,6 @@
+line_item_usage_start_date,line_item_usage_account_id,line_item_product_code,line_item_line_item_type,line_item_usage_type,line_item_usage_amount,line_item_unblended_cost,line_item_currency_code,product_region_code,product_servicecode,product_product_name
+2026-11-03T00:00:00Z,111122223333,AmazonBedrock,Usage,USE1-Claude3.7Sonnet-input-tokens,1200,0.0036,USD,us-east-1,AmazonBedrock,Amazon Bedrock
+2026-11-03T00:00:00Z,111122223333,AmazonBedrock,Usage,USE1-Claude3.7Sonnet-output-tokens,300,0.0045,USD,us-east-1,AmazonBedrock,Amazon Bedrock
+2026-11-03T00:00:00Z,111122223333,AmazonBedrock,Usage,USE1-MysteryModel-Units,1,0.5,USD,us-east-1,AmazonBedrock,Amazon Bedrock
+2026-11-03T00:00:00Z,111122223333,c8k3x9mkt,Usage,USE1-MP:USE1_InputTokenCount-Units,10,0.01,USD,us-east-1,,Claude 3.5 Sonnet (Amazon Bedrock Edition)
+2026-11-03T00:00:00Z,111122223333,AmazonS3,Usage,USE1-TimedStorage-ByteHrs,5,0.0001,USD,us-east-1,AmazonS3,Amazon Simple Storage Service
