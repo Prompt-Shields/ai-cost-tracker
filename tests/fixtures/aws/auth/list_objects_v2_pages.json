@@ -1,0 +1,18 @@
+[
+  {
+    "IsTruncated": true,
+    "NextContinuationToken": "page-2",
+    "KeyCount": 2,
+    "Contents": [
+      {"Key": "ai-cost-tracker/ai-cost-tracker-cur2/data/BILLING_PERIOD=2026-11/part-0.csv.gz", "Size": 10},
+      {"Key": "ai-cost-tracker/ai-cost-tracker-cur2/data/BILLING_PERIOD=2026-11/part-1.csv.gz", "Size": 20}
+    ]
+  },
+  {
+    "IsTruncated": false,
+    "KeyCount": 1,
+    "Contents": [
+      {"Key": "ai-cost-tracker/ai-cost-tracker-cur2/metadata/BILLING_PERIOD=2026-11/manifest.json", "Size": 5}
+    ]
+  }
+]
