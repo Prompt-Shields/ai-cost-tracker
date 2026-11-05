@@ -6,6 +6,7 @@ from sqlalchemy import create_engine
 from ai_cost_tracker import cli
 from ai_cost_tracker.config import get_settings
 from ai_cost_tracker.connectors.fake import FakeConnector
+from ai_cost_tracker.connectors.fake_aws import FakeAwsConnector
 from ai_cost_tracker.connectors.fake_gcp import FakeGcpConnector
 from ai_cost_tracker.db import session as db_session
 from ai_cost_tracker.db.models import Base
@@ -84,6 +85,10 @@ def test_seed_demo_migrates_then_ingests_with_fake_connector(calls, azure_settin
     fn, connector, kwargs = calls[3]
     assert fn is run_backfill
     assert isinstance(connector, FakeGcpConnector)
+    assert kwargs == {"days": 3}
+    fn, connector, kwargs = calls[4]
+    assert fn is run_backfill
+    assert isinstance(connector, FakeAwsConnector)
     assert kwargs == {"days": 3}
 
 
