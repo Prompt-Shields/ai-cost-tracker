@@ -7,8 +7,14 @@ from pydantic import BaseModel, Field
 from ai_cost_tracker.core.models import Cloud, CloudAccount, CostRecord, Deployment, TokenUsage
 
 # Deployment SKUs billed per hour of reserved capacity (PTU), compared case-insensitively.
+# Bedrock provisioned throughput uses "provisionedthroughput" (connectors/aws).
 PROVISIONED_SKUS = frozenset(
-    {"provisionedmanaged", "globalprovisionedmanaged", "datazoneprovisionedmanaged"}
+    {
+        "provisionedmanaged",
+        "globalprovisionedmanaged",
+        "datazoneprovisionedmanaged",
+        "provisionedthroughput",
+    }
 )
 
 
