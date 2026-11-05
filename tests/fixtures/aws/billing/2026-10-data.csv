@@ -1,0 +1,14 @@
+identity_line_item_id,line_item_usage_start_date,line_item_usage_account_id,line_item_product_code,line_item_line_item_type,line_item_usage_type,line_item_usage_amount,line_item_unblended_cost,line_item_currency_code,product_region_code,bill_billing_entity,line_item_line_item_description
+a1,2026-10-30T00:00:00Z,111111111111,AmazonBedrock,Usage,USE1-Claude3.7Sonnet-input-tokens,1000,3.0000000000,USD,us-east-1,AWS,"$0.003 per 1K input tokens, Claude 3.7 Sonnet"
+a2,2026-10-30T13:00:00Z,111111111111,AmazonBedrock,Usage,USE1-Claude3.7Sonnet-input-tokens,41.15,0.1234567891,USD,us-east-1,AWS,Claude 3.7 Sonnet input
+a3,2026-10-30T13:00:00Z,111111111111,AmazonBedrock,Usage,USE1-Claude3.7Sonnet-output-tokens,10,0.15,USD,us-east-1,AWS,Claude 3.7 Sonnet output
+a4,2026-10-30T00:00:00Z,111111111111,AmazonBedrock,Credit,USE1-Claude3.7Sonnet-input-tokens,0,-1.5000000000,USD,us-east-1,AWS,AWS Activate credit
+a5,2026-10-30T00:00:00Z,111111111111,AmazonBedrock,Tax,,0,0.50,USD,,AWS,Tax for product code AmazonBedrock
+a6,2026-10-30T00:00:00Z,222222222222,AmazonBedrock,Usage,USE1-Claude3.7Sonnet-input-tokens,500,1.5,USD,us-east-1,AWS,other account
+a7,2026-10-30T00:00:00Z,111111111111,AmazonEC2,Usage,USE1-BoxUsage:t3.micro,24,0.2496,USD,us-east-1,AWS,EC2
+a8,2026-10-30T05:00:00Z,111111111111,prodview7abc123,Usage,USW2-MP:USW2_InputTokenCount-Units,2000,0.50,USD,us-west-2,AWS Marketplace,Claude 3 Haiku (Amazon Bedrock Edition) - Input tokens
+a9,2026-10-30T05:00:00Z,111111111111,prodviewzzz999,Usage,USE1-MP:SaaS-Units,1,9.99,USD,us-east-1,AWS Marketplace,Some SaaS product
+a10,2026-10-31T23:00:00Z,111111111111,AmazonBedrock,Usage,USE1-NovaPro-input-tokens,100,0.08,USD,us-east-1,AWS,Nova Pro input
+a11,2026-10-31T22:00:00Z,111111111111,AmazonBedrock,Usage,USE1-NovaPro-output-tokens,0,0,USD,us-east-1,AWS,free tier
+a12,2026-10-29T23:59:59Z,111111111111,AmazonBedrock,Usage,USE1-NovaPro-input-tokens,100,0.08,USD,us-east-1,AWS,before range
+a13,2026-10-31T00:00:00Z,111111111111,AmazonBedrock,Credit,,0,-0.05,USD,us-east-1,AWS,Promotional credit
