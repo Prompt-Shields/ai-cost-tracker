@@ -41,6 +41,17 @@ param gcpAzureTokenScope string
 param gcpBillingExportTable string
 param gcpBillingExportLocation string
 param gcpRegions array
+param awsEnabled bool
+param awsAccountIds array
+param awsRoleName string
+param awsAzureTokenScope string
+param awsRegions array
+param awsExportAccountId string
+param awsExportBucket string
+param awsExportPrefix string
+param awsExportName string
+param awsExportRegion string
+param awsCfnTemplateUrl string
 param reportingCurrency string
 
 @description('Public URL of the web app if a custom domain is bound; empty uses the default FQDN.')
@@ -122,7 +133,24 @@ var gcpEnv = filter(
   ],
   e => !empty(e.value)
 )
-var backendEnv = concat(baseEnv, gcpEnv)
+// AWS settings: same rule, only the ones given.
+var awsEnv = filter(
+  [
+    { name: 'ACT_AWS_ENABLED', value: string(awsEnabled) }
+    { name: 'ACT_AWS_ACCOUNT_IDS', value: empty(awsAccountIds) ? '' : string(awsAccountIds) }
+    { name: 'ACT_AWS_ROLE_NAME', value: awsRoleName }
+    { name: 'ACT_AWS_AZURE_TOKEN_SCOPE', value: awsAzureTokenScope }
+    { name: 'ACT_AWS_REGIONS', value: empty(awsRegions) ? '' : string(awsRegions) }
+    { name: 'ACT_AWS_EXPORT_ACCOUNT_ID', value: awsExportAccountId }
+    { name: 'ACT_AWS_EXPORT_BUCKET', value: awsExportBucket }
+    { name: 'ACT_AWS_EXPORT_PREFIX', value: awsExportPrefix }
+    { name: 'ACT_AWS_EXPORT_NAME', value: awsExportName }
+    { name: 'ACT_AWS_EXPORT_REGION', value: awsExportRegion }
+    { name: 'ACT_AWS_CFN_TEMPLATE_URL', value: awsCfnTemplateUrl }
+  ],
+  e => !empty(e.value)
+)
+var backendEnv = concat(baseEnv, gcpEnv, awsEnv)
 
 var identityBlock = {
   type: 'UserAssigned'

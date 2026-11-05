@@ -1,0 +1,298 @@
+# AI cost tracker: read-only access to Amazon Bedrock cost, token usage and inventory.
+#
+# Deploy once in every AWS account you want tracked (stack name: ai-cost-tracker-readonly).
+# In the export account (normally the management/payer account) set ExportAccount=true:
+# the stack then also creates the S3 bucket and the CUR 2.0 Data Export the app reads cost
+# from. See docs/aws-setup.md.
+#
+# No access keys anywhere: the app's Azure managed identity gets an Entra token and swaps it
+# for temporary credentials with sts:AssumeRoleWithWebIdentity. The trust policy admits only
+# that identity (sub) and audience (aud). That is why there is no External ID: External ID
+# guards trust between AWS principals; for a web identity the sub/aud conditions do that job.
+#
+# Download this template from the app (Connect > AWS > Download template, or
+# GET /api/v1/aws/template.yaml): the app fills in the export's column list (__CUR_COLUMNS__
+# in the repo copy) from connectors/aws/billing.py so the export has exactly what it reads.
+#
+# Details not yet checked on a live account are marked "Assumption (spike-aws)"; they follow
+# AWS's public IAM, CloudFormation and Data Exports documentation. `act spike-aws` checks them.
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  AI cost tracker read-only role (keyless, trusted via Entra ID OIDC) and, in the export
+  account, the CUR 2.0 Data Export it reads.
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label: { default: "Who may assume the role (pre-filled by the app)" }
+        Parameters: [EntraTenantId, AzurePrincipalId, Audience, IssuerVersion, RoleName]
+      - Label: { default: "Advanced" }
+        Parameters: [ExistingOidcProviderArn]
+      - Label: { default: "Export account only" }
+        Parameters: [ExportAccount, ExportBucketName, ExportPrefix, ExportName]
+
+Parameters:
+  RoleName:
+    Type: String
+    Default: AiCostTrackerReadOnly
+    Description: Role the app assumes (ACT_AWS_ROLE_NAME). Same name in every account.
+  EntraTenantId:
+    Type: String
+    AllowedPattern: "^[0-9a-fA-F-]{36}$"
+    Description: Entra ID tenant of the app's managed identity (ACT_ENTRA_TENANT_ID).
+  AzurePrincipalId:
+    Type: String
+    AllowedPattern: "^[0-9a-fA-F-]{36}$"
+    Description: Object (principal) id of the app's managed identity (ACT_AZURE_PRINCIPAL_ID).
+  Audience:
+    Type: String
+    Default: api://AzureADTokenExchange
+    # Assumption (spike-aws): a managed identity token requested for the scope
+    # api://AzureADTokenExchange/.default carries aud = api://AzureADTokenExchange.
+    Description: Token audience (aud); ACT_AWS_AZURE_TOKEN_SCOPE without /.default.
+  IssuerVersion:
+    Type: String
+    Default: v2
+    AllowedValues: [v2, v1]
+    # Assumption (spike-aws): tokens for api://AzureADTokenExchange are Entra v2.0 tokens
+    # (iss https://login.microsoftonline.com/<tenant>/v2.0). If STS reports an invalid
+    # identity token, decode one and switch to v1 (iss https://sts.windows.net/<tenant>/).
+    Description: Token issuer form. v2 = login.microsoftonline.com/<tenant>/v2.0, v1 = sts.windows.net/<tenant>/.
+  ExistingOidcProviderArn:
+    Type: String
+    Default: ""
+    Description: >-
+      Leave empty to create the OIDC provider. If this account already has an IAM OIDC
+      provider for the same issuer URL (IAM allows one per URL), put its ARN here and add the
+      audience to its client id list.
+  ExportAccount:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: true in the one account that holds the CUR 2.0 export (management/payer account).
+  ExportBucketName:
+    Type: String
+    Default: ""
+    Description: Export account only. Empty = ai-cost-tracker-cur-<account id> (ACT_AWS_EXPORT_BUCKET).
+  ExportPrefix:
+    Type: String
+    Default: ai-cost-tracker
+    AllowedPattern: "^[a-zA-Z0-9!_.*'()-]+(/[a-zA-Z0-9!_.*'()-]+)*$"
+    Description: Export account only. S3 prefix of the export (ACT_AWS_EXPORT_PREFIX).
+  ExportName:
+    Type: String
+    Default: ai-cost-tracker-cur2
+    AllowedPattern: "^[0-9A-Za-z!_.*'()-]+$"
+    Description: Export account only. Data Export name (ACT_AWS_EXPORT_NAME).
+
+Conditions:
+  CreateOidcProvider: !Equals [!Ref ExistingOidcProviderArn, ""]
+  UseV1Issuer: !Equals [!Ref IssuerVersion, v1]
+  IsExportAccount: !Equals [!Ref ExportAccount, "true"]
+  HasBucketName: !Not [!Equals [!Ref ExportBucketName, ""]]
+
+Resources:
+  # Trusts tokens issued by our Entra tenant for our audience. On its own it admits nobody:
+  # the role's trust policy below narrows it to the app's managed identity.
+  OidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Condition: CreateOidcProvider
+    Properties:
+      Url: !If
+        - UseV1Issuer
+        - !Sub "https://sts.windows.net/${EntraTenantId}/"
+        - !Sub "https://login.microsoftonline.com/${EntraTenantId}/v2.0"
+      ClientIdList: [!Ref Audience]
+      # Assumption (spike-aws): ThumbprintList is optional; IAM verifies Entra's TLS
+      # certificate with its own trusted root CAs for well-known providers.
+
+  ReadOnlyRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref RoleName
+      Description: AI cost tracker (read-only). Assumed only by the app's Azure managed identity.
+      MaxSessionDuration: 3600
+      # Built as a JSON string because IAM condition keys embed the issuer host/path, and
+      # YAML map keys can't use !Sub. Assumption (spike-aws): the condition keys are
+      # "<issuer without https://>:aud" and ":sub", per IAM's OIDC federation docs, and
+      # CloudFormation accepts a JSON string for this Json-typed property.
+      AssumeRolePolicyDocument: !Sub
+        - |
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Sid": "AppManagedIdentityOnly",
+                "Effect": "Allow",
+                "Principal": {"Federated": "${ProviderArn}"},
+                "Action": "sts:AssumeRoleWithWebIdentity",
+                "Condition": {
+                  "StringEquals": {
+                    "${IssuerKey}:aud": "${Audience}",
+                    "${IssuerKey}:sub": "${AzurePrincipalId}"
+                  }
+                }
+              }
+            ]
+          }
+        - ProviderArn: !If [CreateOidcProvider, !Ref OidcProvider, !Ref ExistingOidcProviderArn]
+          IssuerKey: !If
+            - UseV1Issuer
+            - !Sub "sts.windows.net/${EntraTenantId}/"
+            - !Sub "login.microsoftonline.com/${EntraTenantId}/v2.0"
+      Policies:
+        - PolicyName: ai-cost-tracker-read
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # Assumption (spike-aws): these List/Get actions take Resource "*" (Bedrock
+              # list actions don't support resource-level scoping).
+              - Sid: BedrockTokenMetrics
+                Effect: Allow
+                Action:
+                  - cloudwatch:ListMetrics
+                  - cloudwatch:GetMetricData
+                Resource: "*"
+              - Sid: BedrockInventory
+                Effect: Allow
+                Action:
+                  - bedrock:ListFoundationModels
+                  - bedrock:ListInferenceProfiles
+                  - bedrock:GetInferenceProfile
+                  - bedrock:ListProvisionedModelThroughputs
+                  - bedrock:GetProvisionedModelThroughput
+                  - bedrock:ListTagsForResource
+                Resource: "*"
+              - !If
+                - IsExportAccount
+                - Sid: OrganizationAccounts
+                  Effect: Allow
+                  Action:
+                    - organizations:ListAccounts
+                    - organizations:DescribeAccount
+                  Resource: "*"
+                - !Ref AWS::NoValue
+              - !If
+                - IsExportAccount
+                - Sid: ListExport
+                  Effect: Allow
+                  Action: s3:ListBucket
+                  Resource: !Sub
+                    - "arn:${AWS::Partition}:s3:::${Bucket}"
+                    - Bucket: !If [HasBucketName, !Ref ExportBucketName, !Sub "ai-cost-tracker-cur-${AWS::AccountId}"]
+                  Condition:
+                    StringLike:
+                      s3:prefix: [!Ref ExportPrefix, !Sub "${ExportPrefix}/*"]
+                - !Ref AWS::NoValue
+              - !If
+                - IsExportAccount
+                - Sid: ReadExport
+                  Effect: Allow
+                  Action: s3:GetObject
+                  Resource: !Sub
+                    - "arn:${AWS::Partition}:s3:::${Bucket}/${ExportPrefix}/*"
+                    - Bucket: !If [HasBucketName, !Ref ExportBucketName, !Sub "ai-cost-tracker-cur-${AWS::AccountId}"]
+                - !Ref AWS::NoValue
+
+  # --- Export account only -------------------------------------------------------------
+
+  ExportBucket:
+    Type: AWS::S3::Bucket
+    Condition: IsExportAccount
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !If [HasBucketName, !Ref ExportBucketName, !Sub "ai-cost-tracker-cur-${AWS::AccountId}"]
+      OwnershipControls:
+        Rules: [{ ObjectOwnership: BucketOwnerEnforced }]
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
+
+  ExportBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Condition: IsExportAccount
+    Properties:
+      Bucket: !Ref ExportBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          # Assumption (spike-aws): the bucket policy AWS's Data Exports guide prescribes:
+          # both billing service principals may write and read the policy, scoped to this
+          # account's exports.
+          - Sid: EnableAWSDataExportsToWriteToS3AndCheckPolicy
+            Effect: Allow
+            Principal:
+              Service:
+                - billingreports.amazonaws.com
+                - bcm-data-exports.amazonaws.com
+            Action:
+              - s3:PutObject
+              - s3:GetBucketPolicy
+            Resource:
+              - !Sub "arn:${AWS::Partition}:s3:::${ExportBucket}"
+              - !Sub "arn:${AWS::Partition}:s3:::${ExportBucket}/*"
+            Condition:
+              StringLike:
+                aws:SourceAccount: !Ref AWS::AccountId
+                aws:SourceArn:
+                  - !Sub "arn:${AWS::Partition}:cur:us-east-1:${AWS::AccountId}:definition/*"
+                  - !Sub "arn:${AWS::Partition}:bcm-data-exports:us-east-1:${AWS::AccountId}:export/*"
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: "*"
+            Action: s3:*
+            Resource:
+              - !Sub "arn:${AWS::Partition}:s3:::${ExportBucket}"
+              - !Sub "arn:${AWS::Partition}:s3:::${ExportBucket}/*"
+            Condition:
+              Bool: { aws:SecureTransport: "false" }
+
+  # CUR 2.0, CSV + GZIP, overwritten in place, refreshed by AWS as billing data changes
+  # (daily or more often). The first delivery can take up to 24 hours.
+  # Assumption (spike-aws): property names/values per the AWS::BCMDataExports::Export
+  # reference; the export must be created in us-east-1 (deploy this stack there);
+  # Frequency SYNCHRONOUS is the only cadence; files land under
+  # <prefix>/<name>/data/BILLING_PERIOD=YYYY-MM/ with a manifest under .../metadata/.
+  CostExport:
+    Type: AWS::BCMDataExports::Export
+    Condition: IsExportAccount
+    DependsOn: ExportBucketPolicy
+    Properties:
+      Export:
+        Name: !Ref ExportName
+        Description: AI cost tracker (Amazon Bedrock cost). Read by the app's read-only role.
+        DataQuery:
+          QueryStatement: "SELECT __CUR_COLUMNS__ FROM COST_AND_USAGE_REPORT"
+          TableConfigurations:
+            COST_AND_USAGE_REPORT:
+              TIME_GRANULARITY: DAILY
+              INCLUDE_RESOURCES: "FALSE"
+              INCLUDE_MANUAL_DISCOUNT_COMPATIBILITY: "FALSE"
+              INCLUDE_SPLIT_COST_ALLOCATION_DATA: "FALSE"
+        DestinationConfigurations:
+          S3Destination:
+            S3Bucket: !Ref ExportBucket
+            S3Prefix: !Ref ExportPrefix
+            S3Region: !Ref AWS::Region
+            S3OutputConfigurations:
+              OutputType: CUSTOM
+              Format: TEXT_OR_CSV
+              Compression: GZIP
+              Overwrite: OVERWRITE_REPORT
+        RefreshCadence:
+          Frequency: SYNCHRONOUS
+
+Outputs:
+  RoleArn:
+    Description: Role the app assumes in this account.
+    Value: !GetAtt ReadOnlyRole.Arn
+  AppSettings:
+    Condition: IsExportAccount
+    Description: Settings for the app's api and worker (no secrets).
+    Value: !Sub "ACT_AWS_ENABLED=true ACT_AWS_EXPORT_ACCOUNT_ID=${AWS::AccountId} ACT_AWS_EXPORT_BUCKET=${ExportBucket} ACT_AWS_EXPORT_PREFIX=${ExportPrefix} ACT_AWS_EXPORT_NAME=${ExportName} ACT_AWS_EXPORT_REGION=${AWS::Region}"

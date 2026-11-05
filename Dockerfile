@@ -17,6 +17,8 @@ RUN uv sync --frozen --no-dev --no-install-project
 
 COPY README.md alembic.ini* ./
 COPY src ./src
+# The AWS CloudFormation template is served by GET /api/v1/aws/template.yaml.
+COPY infra/aws ./infra/aws
 RUN uv sync --frozen --no-dev
 
 RUN useradd --system --no-create-home --home-dir /app app && chown -R app /app

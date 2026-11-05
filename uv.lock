@@ -26,6 +26,7 @@ dev = [
     { name = "aiosqlite" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
+    { name = "pyyaml" },
     { name = "ruff" },
 ]
 
@@ -50,6 +51,7 @@ dev = [
     { name = "aiosqlite", specifier = ">=0.20" },
     { name = "pytest", specifier = ">=8.2" },
     { name = "pytest-asyncio", specifier = ">=0.23" },
+    { name = "pyyaml", specifier = ">=6" },
     { name = "ruff", specifier = ">=0.5" },
 ]
 

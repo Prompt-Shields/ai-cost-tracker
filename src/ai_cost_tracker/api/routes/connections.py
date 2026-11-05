@@ -1,6 +1,7 @@
 """Connection health panel and the "new subscription found" banner (issues #24, #25).
 
-Lists every cloud's accounts (Azure subscriptions, GCP projects) with a ``cloud`` field.
+Lists every cloud's accounts (Azure subscriptions, GCP projects, AWS accounts) with a ``cloud``
+field.
 """
 
 import uuid
@@ -16,6 +17,7 @@ from ai_cost_tracker import audit
 from ai_cost_tracker.api.auth import Principal, get_principal, require_role
 from ai_cost_tracker.api.deps import SessionDep, SettingsDep, TenantId
 from ai_cost_tracker.config import Settings
+from ai_cost_tracker.connectors.aws import onboarding as aws_onboarding
 from ai_cost_tracker.connectors.gcp import onboarding as gcp_onboarding
 from ai_cost_tracker.db.models import CloudAccountRow, SyncState
 from ai_cost_tracker.health import describe
@@ -152,6 +154,8 @@ def _connection(
         message, fix = h.message, h.fix
         if account.cloud == "gcp":
             message, fix = _gcp_wording(account.account_id, message, fix, settings)
+        elif account.cloud == "aws":
+            message, fix = _aws_wording(account.account_id, message, fix, settings)
         sources[source] = {
             "status": h.status,
             "last_success_at": utc_iso(h.last_success_at),
@@ -190,6 +194,42 @@ def _gcp_wording(
     elif fix and "managed identity" in fix:
         message = "The app could not sign in to Google Cloud (Workload Identity Federation)"
         fix = "Check ACT_GCP_WIF_AUDIENCE and ACT_GCP_SERVICE_ACCOUNT (docs/gcp-setup.md)"
+    return message, fix
+
+
+# AWS errors that mean the role is missing or doesn't trust us (botocore codes / our
+# AwsAccessDenied), which health.describe's Azure patterns don't recognise.
+_AWS_DENIED = ("AccessDenied", "not authorized", "UnauthorizedOperation", "InvalidIdentityToken")
+
+
+def _aws_wording(
+    account_id: str, message: str, fix: str | None, settings: Settings
+) -> tuple[str, str | None]:
+    """``health.describe`` speaks Azure; say it the AWS way.
+
+    Access fixes become the CloudFormation stack deploy command for that account; an Azure
+    credential hint becomes the OIDC / AssumeRoleWithWebIdentity one.
+    """
+    stack_fix = (
+        f"# Deploy the read-only role stack in AWS account {account_id} (AWS CloudShell)\n"
+        + aws_onboarding.deploy_command(
+            settings, export_account=aws_onboarding.is_export_account(settings, account_id)
+        )
+    )
+    if any(code.lower() in message.lower() for code in _AWS_DENIED):
+        return f"Read-only role missing or not trusted in account {account_id}", stack_fix
+    message = message.replace(
+        "Reader role missing on subscription", "Read-only role missing in account"
+    )
+    message = message.replace("subscription", "account")
+    if fix and "az role assignment" in fix:
+        fix = stack_fix
+    elif fix and "managed identity" in fix:
+        message = "The app could not sign in to AWS (Entra token for AssumeRoleWithWebIdentity)"
+        fix = (
+            "Check ACT_AZURE_PRINCIPAL_ID and the stack's EntraTenantId / Audience / "
+            "IssuerVersion parameters (docs/aws-setup.md)"
+        )
     return message, fix
 
 

@@ -28,6 +28,18 @@ param gcpAzureTokenScope = readEnvironmentVariable('ACT_GCP_AZURE_TOKEN_SCOPE', 
 param gcpBillingExportTable = readEnvironmentVariable('ACT_GCP_BILLING_EXPORT_TABLE', '')
 param gcpBillingExportLocation = readEnvironmentVariable('ACT_GCP_BILLING_EXPORT_LOCATION', '')
 param gcpRegions = json(readEnvironmentVariable('ACT_GCP_REGIONS', '[]'))
+// AWS via a keyless read-only role per account (docs/aws-setup.md). Not secrets either.
+param awsEnabled = bool(readEnvironmentVariable('ACT_AWS_ENABLED', 'false'))
+param awsAccountIds = json(readEnvironmentVariable('ACT_AWS_ACCOUNT_IDS', '[]'))
+param awsRoleName = readEnvironmentVariable('ACT_AWS_ROLE_NAME', '')
+param awsAzureTokenScope = readEnvironmentVariable('ACT_AWS_AZURE_TOKEN_SCOPE', '')
+param awsRegions = json(readEnvironmentVariable('ACT_AWS_REGIONS', '[]'))
+param awsExportAccountId = readEnvironmentVariable('ACT_AWS_EXPORT_ACCOUNT_ID', '')
+param awsExportBucket = readEnvironmentVariable('ACT_AWS_EXPORT_BUCKET', '')
+param awsExportPrefix = readEnvironmentVariable('ACT_AWS_EXPORT_PREFIX', '')
+param awsExportName = readEnvironmentVariable('ACT_AWS_EXPORT_NAME', '')
+param awsExportRegion = readEnvironmentVariable('ACT_AWS_EXPORT_REGION', '')
+param awsCfnTemplateUrl = readEnvironmentVariable('ACT_AWS_CFN_TEMPLATE_URL', '')
 param reportingCurrency = readEnvironmentVariable('ACT_REPORTING_CURRENCY', '')
 
 // Set by the workflow per step (bootstrap, migrate, roll).

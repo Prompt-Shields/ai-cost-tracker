@@ -91,6 +91,18 @@ jobs:
       ACT_GCP_BILLING_EXPORT_LOCATION: ${{ vars.ACT_GCP_BILLING_EXPORT_LOCATION }}
       ACT_GCP_REGIONS: ${{ vars.ACT_GCP_REGIONS || '[]' }}
       ACT_REPORTING_CURRENCY: ${{ vars.ACT_REPORTING_CURRENCY }}
+      # AWS (docs/aws-setup.md); no access keys, nothing secret.
+      ACT_AWS_ENABLED: ${{ vars.ACT_AWS_ENABLED || 'false' }}
+      ACT_AWS_ACCOUNT_IDS: ${{ vars.ACT_AWS_ACCOUNT_IDS || '[]' }}
+      ACT_AWS_ROLE_NAME: ${{ vars.ACT_AWS_ROLE_NAME }}
+      ACT_AWS_AZURE_TOKEN_SCOPE: ${{ vars.ACT_AWS_AZURE_TOKEN_SCOPE }}
+      ACT_AWS_REGIONS: ${{ vars.ACT_AWS_REGIONS || '[]' }}
+      ACT_AWS_EXPORT_ACCOUNT_ID: ${{ vars.ACT_AWS_EXPORT_ACCOUNT_ID }}
+      ACT_AWS_EXPORT_BUCKET: ${{ vars.ACT_AWS_EXPORT_BUCKET }}
+      ACT_AWS_EXPORT_PREFIX: ${{ vars.ACT_AWS_EXPORT_PREFIX }}
+      ACT_AWS_EXPORT_NAME: ${{ vars.ACT_AWS_EXPORT_NAME }}
+      ACT_AWS_EXPORT_REGION: ${{ vars.ACT_AWS_EXPORT_REGION }}
+      ACT_AWS_CFN_TEMPLATE_URL: ${{ vars.ACT_AWS_CFN_TEMPLATE_URL }}
     steps:
       - uses: actions/checkout@v4
 
