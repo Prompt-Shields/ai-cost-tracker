@@ -16,11 +16,29 @@ export function cloudQuery(choice: CloudChoice): { cloud?: Cloud } {
   return choice === "all" ? {} : { cloud: choice };
 }
 
-/** What an account is called on each cloud, singular. */
+/** What an account is called on each cloud, singular: AWS (and a mix of clouds) says "account". */
 export function accountNoun(cloud: string | null): string {
   if (cloud === "azure") return "subscription";
   if (cloud === "gcp") return "project";
   return "account";
+}
+
+/** Where to connect a cloud; the generic connect page when no one cloud is in view. */
+export function connectHref(cloud: string | null): string {
+  if (cloud === "gcp") return "/connect/gcp";
+  if (cloud === "aws") return "/connect/aws";
+  return "/connect";
+}
+
+/**
+ * Empty-state sentence: what connecting an account of this cloud brings in, e.g. "Connect an
+ * AWS account and its Bedrock models". Mixed or unknown clouds stay generic.
+ */
+export function connectPhrase(cloud: string | null): string {
+  if (cloud === "azure") return "Connect an Azure subscription and its AI deployments";
+  if (cloud === "gcp") return "Connect a Google Cloud project and its Vertex AI models";
+  if (cloud === "aws") return "Connect an AWS account and its Bedrock models";
+  return "Connect an Azure subscription, Google Cloud project or AWS account and its AI models";
 }
 
 /**
@@ -34,7 +52,7 @@ export function cloudColor(cloud: string): string | undefined {
   return undefined;
 }
 
-function isCloud(v: string): v is Cloud {
+export function isCloud(v: string): v is Cloud {
   return v === "azure" || v === "gcp" || v === "aws";
 }
 
@@ -51,7 +69,7 @@ export function useClouds(): { clouds: CloudInfo[]; ready: boolean } {
   };
 }
 
-/** All / Azure / Google Cloud; renders nothing unless there is more than one cloud to pick. */
+/** All / Azure / Google Cloud / AWS; renders nothing unless there is more than one cloud to pick. */
 export function CloudFilter({
   clouds,
   value,

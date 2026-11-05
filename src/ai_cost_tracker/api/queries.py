@@ -56,8 +56,12 @@ DEFAULT_CURRENCY = "USD"
 DEFAULT_CLOUD = "azure"
 CLOUDS = ("azure", "gcp", "aws")  # display order: Azure first
 CLOUD_LABELS = {"azure": "Azure", "gcp": "Google Cloud", "aws": "AWS"}
-# connectors/gcp/ids.py's resource id; repeated so the API never imports the GCP connector.
+# What one account is called on each cloud, for UI and alert wording.
+ACCOUNT_NOUNS = {"azure": "subscription", "gcp": "project", "aws": "account"}
+# connectors/gcp/ids.py's and connectors/aws/ids.py's resource ids; repeated so the API never
+# imports a cloud connector (and with it a cloud SDK).
 _GCP_RESOURCE = re.compile(r"^//aiplatform\.googleapis\.com/projects/([^/]+)/locations/([^/]+)$")
+_AWS_RESOURCE = re.compile(r"^//bedrock\.amazonaws\.com/accounts/([^/]+)/regions/([^/]+)$")
 STATUSES = ("estimated", "billed", "finalised")  # ascending: how settled a day's cost is
 INPUT_DIRECTIONS = frozenset({"input", "cached_input"})
 OUTPUT_DIRECTIONS = frozenset({"output"})
@@ -120,22 +124,33 @@ class Inventory:
             return {}
         return {k: v for k, v in siblings[0].items() if all(s.get(k) == v for s in siblings)}
 
-    def candidates(self, resource_id: str, model: str) -> list[DeploymentRow]:
+    def candidates(
+        self, resource_id: str, model: str, direction: str | None = None
+    ) -> list[DeploymentRow]:
         rows = self.by_resource.get(resource_id, [])
+        provisioned = [r for r in rows if is_provisioned(r.sku)]
         if model == PROVISIONED_MODEL:
             # PTU capacity meters name no model: they belong to the provisioned deployments.
-            return [r for r in rows if is_provisioned(r.sku)]
-        return [r for r in rows if (r.model or "").lower() == model.lower()]
+            return provisioned
+        same_model = [r for r in rows if (r.model or "").lower() == model.lower()]
+        if direction == "provisioned":
+            # A capacity charge that names its model (Bedrock provisioned throughput bills per
+            # model) belongs to that model's provisioned deployment, not to the on-demand one
+            # in the same account/region serving the same model.
+            own = [r for r in same_model if is_provisioned(r.sku)]
+            return own or (provisioned if model == UNMAPPED else same_model)
+        return same_model
 
 
 def deployment_label(resource_id: str, deployment: str | None) -> str:
     """``<account resource name>/<deployment>``: readable and unique within a tenant.
 
-    GCP resources are a project + location, so they read ``<project>/<location>/<deployment>``.
+    GCP resources are a project + location, so they read ``<project>/<location>/<deployment>``;
+    AWS resources are Bedrock in an account + region: ``<account>/<region>/<deployment>``.
     """
-    gcp = _GCP_RESOURCE.match(resource_id)
-    if gcp is not None:
-        return f"{gcp[1]}/{gcp[2]}/{deployment or UNATTRIBUTED}"
+    scoped = _GCP_RESOURCE.match(resource_id) or _AWS_RESOURCE.match(resource_id)
+    if scoped is not None:
+        return f"{scoped[1]}/{scoped[2]}/{deployment or UNATTRIBUTED}"
     resource = resource_id.rstrip("/").rsplit("/", 1)[-1] or resource_id
     return f"{resource}/{deployment or UNATTRIBUTED}"
 
@@ -404,7 +419,7 @@ async def load(
     for d, cloud, account, resource, model, direction, ccy, billed in cost_rows:
         d, model = as_date(d), model or UNMAPPED
         amount = convert(_dec(billed), d, ccy)
-        for dep, share in _attribute(inventory, weights, d, resource, model, amount):
+        for dep, share in _attribute(inventory, weights, d, resource, model, amount, direction):
             cell = cells[CellKey(d, account, resource, dep, model, cloud)]
             cell.billed += share
             if direction in INPUT_DIRECTIONS:
@@ -426,9 +441,10 @@ def _attribute(
     resource_id: str,
     model: str,
     amount: Decimal,
+    direction: str | None = None,
 ) -> list[tuple[str | None, Decimal]]:
     """Split one resource's billed amount for a model across the deployments serving it."""
-    candidates = inventory.candidates(resource_id, model)
+    candidates = inventory.candidates(resource_id, model, direction)
     if not candidates:
         return [(None, amount)]
     if len(candidates) == 1:

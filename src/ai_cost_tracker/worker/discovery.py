@@ -5,7 +5,7 @@ that nobody has added yet, and raises a "new subscription" banner. ``check_pendi
 connects accounts whose Reader role has just been granted, and flags tracked accounts whose
 role was removed. Both take ``(session_factory, connector, settings)`` like the passes in
 ``jobs.py``; the worker schedule calls them once per connector, so each only touches the
-connector's own cloud (Azure subscriptions or GCP projects).
+connector's own cloud (Azure subscriptions, GCP projects or AWS accounts).
 """
 
 import logging
@@ -28,12 +28,15 @@ CONNECTED = "connected"
 WAITING = "waiting_for_access"
 NO_ACCESS = "no_access"
 
-NEW_SUBSCRIPTION = "new_subscription"  # Alert kind for any cloud; the text says "project" on GCP.
+# Alert kind for any cloud; the text says "project" on GCP and "account" on AWS.
+NEW_SUBSCRIPTION = "new_subscription"
 ACCESS_LOST = "access_lost"
 
 # What an account is called and which role it grants us, per cloud, for alert/state text.
-_NOUN = {"gcp": "project"}
-_ROLE = {"gcp": "Read-only roles"}
+_NOUN = {"gcp": "project", "aws": "account"}
+_ROLE = {"gcp": "Read-only roles", "aws": "Read-only IAM role"}
+# How to restore access: on AWS the role comes from our CloudFormation stack (docs/aws-setup.md).
+_REGRANT = {"aws": "re-deploy the ai-cost-tracker-readonly CloudFormation stack"}
 
 
 def _noun(cloud: str) -> str:
@@ -42,6 +45,10 @@ def _noun(cloud: str) -> str:
 
 def _role(cloud: str) -> str:
     return _ROLE.get(cloud, "Reader role")
+
+
+def _regrant(cloud: str) -> str:
+    return _REGRANT.get(cloud, f"re-grant the {_role(cloud)}")
 
 
 def _cloud(connector: Connector) -> str | None:
@@ -175,7 +182,7 @@ async def _check_one(
                 tenant_id,
                 ACCESS_LOST,
                 account_id,
-                f"Lost access to {row.name}: re-grant the {_role(cloud)}",
+                f"Lost access to {row.name}: {_regrant(cloud)}",
                 {"cloud": cloud, "name": row.name},
             )
     await session.commit()

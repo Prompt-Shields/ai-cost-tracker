@@ -23,6 +23,10 @@ STALE_AFTER: dict[str, timedelta] = {
 }
 LABELS = {"usage": "token usage", "cost": "cost", "inventory": "inventory"}
 PRINCIPAL_PLACEHOLDER = "<ACT_AZURE_PRINCIPAL_ID>"
+# AWS access is the read-only role our CloudFormation stack creates in each account
+# (docs/aws-setup.md); the stack name matches connectors/aws/onboarding.deploy_command.
+AWS_STACK_NAME = "ai-cost-tracker-readonly"
+AWS_DEFAULT_ROLE = "AiCostTrackerReadOnly"
 
 _FORBIDDEN = re.compile(r"\b403\b|AuthorizationFailed", re.IGNORECASE)
 _UNAUTHENTICATED = re.compile(
@@ -30,6 +34,13 @@ _UNAUTHENTICATED = re.compile(
     re.IGNORECASE,
 )
 _THROTTLED = re.compile(r"\b429\b|TooManyRequests|throttl", re.IGNORECASE)
+# AwsAccessDenied / AWS error codes (connectors/aws/auth.py maps ClientErrors to these).
+_AWS_DENIED = re.compile(
+    r"AwsAccessDenied|AccessDenied|NotAuthorized|UnauthorizedOperation|AuthorizationError"
+    r"|InvalidIdentityToken|not authorized|role (?:can't|cannot) be assumed",
+    re.IGNORECASE,
+)
+_AWS_AUTH = re.compile(r"AwsAuthError|ExpiredToken|IDPCommunicationError", re.IGNORECASE)
 
 
 @dataclass
@@ -48,8 +59,17 @@ def describe(
     *,
     account_id: str | None = None,
     principal_id: str = "",
+    cloud: str = "azure",
+    aws_role_name: str = AWS_DEFAULT_ROLE,
 ) -> SourceHealth:
-    """Health of one source of one account. ``account_id`` defaults to ``row.account_id``."""
+    """Health of one source of one account. ``account_id`` defaults to ``row.account_id``.
+
+    Wording is Azure's (Reader role, ``az``) unless ``cloud="aws"``, where access is the
+    read-only IAM role from our CloudFormation stack and the fix is to (re-)deploy it.
+    GCP rewrites the Azure wording in ``api/routes/connections.py``.
+    """
+    if cloud == "aws":
+        return _describe_aws(source, row, now, access_status, account_id, aws_role_name)
     account_id = account_id or (row.account_id if row else "") or "<subscription-id>"
     command = grant_command(f"/subscriptions/{account_id}", principal_id or PRINCIPAL_PLACEHOLDER)
     last_success = _utc(row.last_success_at) if row else None
@@ -64,6 +84,11 @@ def describe(
     if row is not None and row.last_error:
         message, fix = _explain(row.last_error, account_id, command)
         return SourceHealth("error", last_success, message, fix)
+    return _freshness(source, last_success, now)
+
+
+def _freshness(source: str, last_success: datetime | None, now: datetime) -> SourceHealth:
+    """ok / stale / never from the last successful pull, the same on every cloud."""
     label = LABELS.get(source, source)
     if last_success is None:
         return SourceHealth("never", None, f"No {label} pulled yet", None)
@@ -89,6 +114,59 @@ def _explain(error: str, account_id: str, command: str) -> tuple[str, str | None
         )
     if _THROTTLED.search(error):
         return "Azure is throttling requests; will retry", None
+    first = error.strip().splitlines()[0] if error.strip() else "Unknown error"
+    return first[:300], None
+
+
+def aws_fix(account_id: str, role_name: str = AWS_DEFAULT_ROLE) -> str:
+    """One-line fix for AWS access problems: (re-)deploy the stack that creates the role."""
+    return (
+        f"Deploy (or re-deploy) the {AWS_STACK_NAME} CloudFormation stack in AWS account "
+        f"{account_id} and check that role {role_name} trusts this app (docs/aws-setup.md)"
+    )
+
+
+def _describe_aws(
+    source: str,
+    row: SyncState | None,
+    now: datetime,
+    access_status: str,
+    account_id: str | None,
+    role_name: str,
+) -> SourceHealth:
+    account_id = account_id or (row.account_id if row else "") or "<account-id>"
+    fix = aws_fix(account_id, role_name)
+    last_success = _utc(row.last_success_at) if row else None
+    now = _utc(now) or datetime.now(UTC)
+    if access_status == "waiting_for_access":
+        return SourceHealth(
+            "never", last_success, "Waiting for the CloudFormation stack to be deployed", fix
+        )
+    if access_status == "no_access":
+        return SourceHealth(
+            "error", last_success, f"Can't assume role {role_name} in account {account_id}", fix
+        )
+    if row is not None and row.last_error:
+        message, hint = _explain_aws(row.last_error, account_id, role_name, fix)
+        return SourceHealth("error", last_success, message, hint)
+    return _freshness(source, last_success, now)
+
+
+def _explain_aws(error: str, account_id: str, role_name: str, fix: str) -> tuple[str, str | None]:
+    """Map a stored AWS error to (plain-language message, one-line fix)."""
+    if _AWS_DENIED.search(error) or _FORBIDDEN.search(error):
+        return (
+            f"Can't assume role {role_name} in account {account_id}, or it lacks a permission",
+            fix,
+        )
+    if _AWS_AUTH.search(error) or _UNAUTHENTICATED.search(error):
+        return (
+            "The app could not exchange its Azure managed identity token for AWS credentials",
+            "Check the IAM OIDC identity provider's issuer and audience in the stack, and "
+            "ACT_AWS_AZURE_TOKEN_SCOPE (docs/aws-setup.md)",
+        )
+    if _THROTTLED.search(error):
+        return "AWS is throttling requests; will retry", None
     first = error.strip().splitlines()[0] if error.strip() else "Unknown error"
     return first[:300], None
 

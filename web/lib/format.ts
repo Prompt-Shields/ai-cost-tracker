@@ -46,3 +46,46 @@ export function currencySymbol(currency: string): string {
     return currency;
   }
 }
+
+/**
+ * Short, readable name for a resource id. GCP (`//aiplatform…/projects/<p>/locations/<l>`) and
+ * AWS (`//bedrock…/accounts/<a>/regions/<r>`) read `<project|account>/<location|region>`;
+ * Azure (and anything else) shows the last path segment, the Cognitive Services account.
+ */
+export function resourceLabel(resourceId: string): string {
+  const scoped = /^\/\/(?:aiplatform\.googleapis\.com\/projects|bedrock\.amazonaws\.com\/accounts)\/([^/]+)\/(?:locations|regions)\/([^/]+)$/.exec(
+    resourceId,
+  );
+  if (scoped) return `${scoped[1]}/${scoped[2]}`;
+  const parts = resourceId.split("/").filter(Boolean);
+  return parts[parts.length - 1] ?? resourceId;
+}
+
+/** What the resource is on each cloud, for a "Resource" fact's label. */
+export function resourceNoun(cloud: string): string {
+  if (cloud === "aws") return "Account / region";
+  if (cloud === "gcp") return "Project / location";
+  return "Resource";
+}
+
+/** Unit of provisioned capacity: Azure PTUs, Bedrock model units. */
+export function capacityUnit(cloud: string, n: number | null = null): string {
+  const one = cloud === "aws" ? "model unit" : cloud === "gcp" ? "GSU" : "PTU";
+  return n === 1 ? one : `${one}s`;
+}
+
+const SKU_LABELS: Record<string, string> = {
+  provisionedthroughput: "Provisioned throughput",
+  inferenceprofile: "Inference profile",
+};
+
+/**
+ * Deployment SKU for display. Bedrock's SKUs read as words; an AWS/GCP deployment without a
+ * SKU is pay-per-token ("On-demand"); provisioned capacity names its unit.
+ */
+export function skuLabel(cloud: string, sku: string | null, capacity: number | null): string | null {
+  if (!sku) return cloud === "aws" || cloud === "gcp" ? "On-demand" : null;
+  const name = SKU_LABELS[sku.replace(/\s+/g, "").toLowerCase()] ?? sku;
+  if (capacity == null) return name;
+  return cloud === "aws" ? `${name} × ${capacity} ${capacityUnit(cloud, capacity)}` : `${name} × ${capacity}`;
+}

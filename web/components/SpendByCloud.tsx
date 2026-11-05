@@ -3,17 +3,20 @@
 import type { Cloud, CloudInfo, Summary } from "@/lib/api";
 import { formatCount, formatDay, formatMoney, formatShare } from "@/lib/format";
 import { CloudBadge, cloudLabel } from "./CloudBadge";
-import { accountNoun, cloudColor } from "./CloudFilter";
+import { accountNoun, cloudColor, isCloud } from "./CloudFilter";
 import { ui } from "./ui";
 import styles from "./SpendByCloud.module.css";
+
+const CLOUD_ORDER = ["azure", "gcp", "aws"];
 
 function plural(n: number, noun: string): string {
   return `${formatCount(n)} ${noun}${n === 1 ? "" : "s"}`;
 }
 
 /**
- * Azure and Google Cloud side by side for the range: one share bar for the split, then a tile
- * per cloud with its total, share and tokens. Totals are already in the reporting currency.
+ * Azure, Google Cloud and AWS side by side for the range: one share bar for the split, then a
+ * tile per cloud with its total, share and tokens, in /clouds order (Azure, Google Cloud, AWS)
+ * so a tile never jumps around when spend shifts. Totals are already in the reporting currency.
  */
 export function SpendByCloud({
   summary,
@@ -32,7 +35,7 @@ export function SpendByCloud({
   const approx = summary.fx_approximate === true;
   const info = new Map(clouds.map((c) => [c.cloud, c]));
   const rows = (summary.by_cloud ?? []).map((c) => ({ ...c, total: Number(c.total_cost) }));
-  // Clouds with accounts but no spend yet still get a tile, so a new project shows up at once.
+  // Clouds with accounts but no spend yet still get a tile, so a new account shows up at once.
   for (const c of clouds) {
     if (!rows.some((r) => r.cloud === c.cloud)) {
       rows.push({
@@ -46,6 +49,13 @@ export function SpendByCloud({
       });
     }
   }
+  // Fixed order (the API ranks by spend): known clouds as /clouds lists them, others last.
+  const rank = (cloud: string) => {
+    const i = clouds.findIndex((c) => c.cloud === cloud);
+    const j = CLOUD_ORDER.indexOf(cloud);
+    return i !== -1 ? i : j !== -1 ? clouds.length + j : clouds.length + CLOUD_ORDER.length;
+  };
+  rows.sort((a, b) => rank(a.cloud) - rank(b.cloud) || a.cloud.localeCompare(b.cloud));
   const grand = rows.reduce((s, r) => s + r.total, 0);
   const shareOf = (v: number) => (grand > 0 ? v / grand : 0);
   const money = (v: number) => `${approx ? "≈ " : ""}${formatMoney(v, currency)}`;
@@ -107,7 +117,7 @@ export function SpendByCloud({
                 {money(r.total)}
               </div>
               <p className={styles.facts}>{facts.join(" · ")}</p>
-              {(r.cloud === "azure" || r.cloud === "gcp" || r.cloud === "aws") && (
+              {isCloud(r.cloud) && (
                 <button
                   type="button"
                   className={styles.only}

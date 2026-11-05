@@ -12,7 +12,7 @@ import {
 import { currencySymbol, formatCount, formatDay, formatMoney } from "@/lib/format";
 import { useSession } from "./AuthProvider";
 import { CloudBadge, cloudLabel } from "./CloudBadge";
-import { cloudQuery, type CloudChoice } from "./CloudFilter";
+import { cloudQuery, connectHref, connectPhrase, type CloudChoice } from "./CloudFilter";
 import { ExportButton } from "./ExportButton";
 import { EmptyNotice, ErrorNotice, Skeleton, ui as styles, useLoad } from "./ui";
 
@@ -99,12 +99,8 @@ export function YesterdayByDeployment({
       )}
       {state.status === "ready" && state.data.rows.length === 0 && (
         <EmptyNotice title="No deployments yet">
-          {cloudName === "gcp"
-            ? "Connect a Google Cloud project and its Vertex AI models will be listed here. "
-            : cloudName === "azure"
-              ? "Connect an Azure subscription and its AI deployments will be listed here. "
-              : "Connect a cloud account and its AI deployments will be listed here. "}
-          <Link className={styles.link} href={cloudName === "gcp" ? "/connect/gcp" : "/connect"}>
+          {`${connectPhrase(cloudName ?? null)} will be listed here. `}
+          <Link className={styles.link} href={connectHref(cloudName ?? null)}>
             {cloudName ? `Connect ${cloudLabel(cloudName)}` : "Connect a cloud"}
           </Link>
         </EmptyNotice>
