@@ -1,0 +1,618 @@
+{
+ "formatVersion": "v1.0",
+ "disclaimer": "This pricing list is for informational purposes only.",
+ "offerCode": "AmazonBedrock",
+ "version": "20250601000000",
+ "publicationDate": "2025-06-01T00:00:00Z",
+ "products": {
+  "AMAZONUSE10000": {
+   "sku": "AMAZONUSE10000",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrock",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-NovaPro-input-tokens",
+    "operation": "Usage",
+    "regionCode": "us-east-1",
+    "servicename": "Amazon Bedrock"
+   }
+  },
+  "AMAZONUSE10001": {
+   "sku": "AMAZONUSE10001",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrock",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-NovaPro-output-tokens",
+    "operation": "Usage",
+    "regionCode": "us-east-1",
+    "servicename": "Amazon Bedrock"
+   }
+  },
+  "AMAZONUSE10002": {
+   "sku": "AMAZONUSE10002",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrock",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-NovaLite-input-tokens-batch",
+    "operation": "Usage",
+    "regionCode": "us-east-1",
+    "servicename": "Amazon Bedrock"
+   }
+  },
+  "AMAZONUSE10003": {
+   "sku": "AMAZONUSE10003",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrock",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-NovaMicro-input-tokens",
+    "operation": "Usage",
+    "regionCode": "us-east-1",
+    "servicename": "Amazon Bedrock"
+   }
+  },
+  "AMAZONUSE10004": {
+   "sku": "AMAZONUSE10004",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrock",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-TitanEmbeddingsV2-Text-input-tokens",
+    "operation": "Usage",
+    "regionCode": "us-east-1",
+    "servicename": "Amazon Bedrock"
+   }
+  },
+  "AMAZONUSE10005": {
+   "sku": "AMAZONUSE10005",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrock",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-TitanImageGeneratorG1-1024-standard-images",
+    "operation": "Usage",
+    "regionCode": "us-east-1",
+    "servicename": "Amazon Bedrock"
+   }
+  },
+  "AMAZONUSE10006": {
+   "sku": "AMAZONUSE10006",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrock",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-NovaSonic-audio-input-tokens",
+    "operation": "Usage",
+    "regionCode": "us-east-1",
+    "servicename": "Amazon Bedrock"
+   }
+  },
+  "AMAZONUSE10007": {
+   "sku": "AMAZONUSE10007",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrock",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-Llama3.1-70B-input-tokens",
+    "operation": "Usage",
+    "regionCode": "us-east-1",
+    "servicename": "Amazon Bedrock"
+   }
+  },
+  "AMAZONUSE10008": {
+   "sku": "AMAZONUSE10008",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrock",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-Claude3.7Sonnet-ProvisionedThroughput-ModelUnits",
+    "operation": "Usage",
+    "regionCode": "us-east-1",
+    "servicename": "Amazon Bedrock"
+   }
+  },
+  "AMAZONUSE10009": {
+   "sku": "AMAZONUSE10009",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrock",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-Claude3.7Sonnet-input-tokens",
+    "operation": "Usage",
+    "regionCode": "us-east-1",
+    "servicename": "Amazon Bedrock"
+   }
+  },
+  "AMAZONUSE10010": {
+   "sku": "AMAZONUSE10010",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrock",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-Claude3.7Sonnet-output-tokens",
+    "operation": "Usage",
+    "regionCode": "us-east-1",
+    "servicename": "Amazon Bedrock"
+   }
+  },
+  "AMAZONUSE10011": {
+   "sku": "AMAZONUSE10011",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrock",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-Claude3.7Sonnet-cache-read-input-tokens",
+    "operation": "Usage",
+    "regionCode": "us-east-1",
+    "servicename": "Amazon Bedrock"
+   }
+  },
+  "AMAZONUSE10012": {
+   "sku": "AMAZONUSE10012",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrock",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-Claude3.7Sonnet-input-tokens-long-context",
+    "operation": "Usage",
+    "regionCode": "us-east-1",
+    "servicename": "Amazon Bedrock"
+   }
+  },
+  "AMAZONUSE10013": {
+   "sku": "AMAZONUSE10013",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrock",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-Llama3.3-70B-input-tokens",
+    "operation": "Usage",
+    "regionCode": "us-east-1",
+    "servicename": "Amazon Bedrock"
+   }
+  },
+  "AMAZONUSE10014": {
+   "sku": "AMAZONUSE10014",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrock",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-MP:USE1_InputTokenCount-Units",
+    "operation": "Usage",
+    "regionCode": "us-east-1",
+    "servicename": "Amazon Bedrock"
+   }
+  },
+  "AMAZONUSE10015": {
+   "sku": "AMAZONUSE10015",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrock",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-CustomModelStorage-ModelMonth",
+    "operation": "Usage",
+    "regionCode": "us-east-1",
+    "servicename": "Amazon Bedrock"
+   }
+  },
+  "AMAZONUSE10016": {
+   "sku": "AMAZONUSE10016",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrock",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-NovaPremier-input-tokens",
+    "operation": "Usage",
+    "regionCode": "us-east-1",
+    "servicename": "Amazon Bedrock"
+   }
+  }
+ },
+ "terms": {
+  "OnDemand": {
+   "AMAZONUSE10000": {
+    "AMAZONUSE10000.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "AMAZONUSE10000",
+     "effectiveDate": "2025-02-01T00:00:00Z",
+     "priceDimensions": {
+      "AMAZONUSE10000.JRTCKXETXF.0000000000": {
+       "rateCode": "AMAZONUSE10000.JRTCKXETXF.0000000000",
+       "description": "NovaPro-input-tokens 1K tokens",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1K tokens",
+       "pricePerUnit": {
+        "USD": "0.0008000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "AMAZONUSE10001": {
+    "AMAZONUSE10001.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "AMAZONUSE10001",
+     "effectiveDate": "2025-02-01T00:00:00Z",
+     "priceDimensions": {
+      "AMAZONUSE10001.JRTCKXETXF.0000000000": {
+       "rateCode": "AMAZONUSE10001.JRTCKXETXF.0000000000",
+       "description": "NovaPro-output-tokens 1K tokens",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1K tokens",
+       "pricePerUnit": {
+        "USD": "0.0032000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "AMAZONUSE10002": {
+    "AMAZONUSE10002.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "AMAZONUSE10002",
+     "effectiveDate": "2025-02-01T00:00:00Z",
+     "priceDimensions": {
+      "AMAZONUSE10002.JRTCKXETXF.0000000000": {
+       "rateCode": "AMAZONUSE10002.JRTCKXETXF.0000000000",
+       "description": "NovaLite-input-tokens-batch 1K tokens",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1K tokens",
+       "pricePerUnit": {
+        "USD": "0.0000300000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "AMAZONUSE10003": {
+    "AMAZONUSE10003.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "AMAZONUSE10003",
+     "effectiveDate": "2025-04-15T00:00:00Z",
+     "priceDimensions": {
+      "AMAZONUSE10003.JRTCKXETXF.0000000000": {
+       "rateCode": "AMAZONUSE10003.JRTCKXETXF.0000000000",
+       "description": "NovaMicro-input-tokens 1M tokens",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1M tokens",
+       "pricePerUnit": {
+        "USD": "0.0350000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "AMAZONUSE10004": {
+    "AMAZONUSE10004.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "AMAZONUSE10004",
+     "effectiveDate": "2025-02-01T00:00:00Z",
+     "priceDimensions": {
+      "AMAZONUSE10004.JRTCKXETXF.0000000000": {
+       "rateCode": "AMAZONUSE10004.JRTCKXETXF.0000000000",
+       "description": "TitanEmbeddingsV2-Text-input-tokens 1K tokens",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1K tokens",
+       "pricePerUnit": {
+        "USD": "0.0000200000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "AMAZONUSE10005": {
+    "AMAZONUSE10005.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "AMAZONUSE10005",
+     "effectiveDate": "2025-02-01T00:00:00Z",
+     "priceDimensions": {
+      "AMAZONUSE10005.JRTCKXETXF.0000000000": {
+       "rateCode": "AMAZONUSE10005.JRTCKXETXF.0000000000",
+       "description": "TitanImageGeneratorG1-1024-standard-images Image",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "Image",
+       "pricePerUnit": {
+        "USD": "0.0100000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "AMAZONUSE10006": {
+    "AMAZONUSE10006.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "AMAZONUSE10006",
+     "effectiveDate": "2025-02-01T00:00:00Z",
+     "priceDimensions": {
+      "AMAZONUSE10006.JRTCKXETXF.0000000000": {
+       "rateCode": "AMAZONUSE10006.JRTCKXETXF.0000000000",
+       "description": "NovaSonic-audio-input-tokens 1K tokens",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1K tokens",
+       "pricePerUnit": {
+        "USD": "0.0034000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "AMAZONUSE10007": {
+    "AMAZONUSE10007.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "AMAZONUSE10007",
+     "effectiveDate": "2025-02-01T00:00:00Z",
+     "priceDimensions": {
+      "AMAZONUSE10007.JRTCKXETXF.0000000000": {
+       "rateCode": "AMAZONUSE10007.JRTCKXETXF.0000000000",
+       "description": "Llama3.1-70B-input-tokens 1K tokens",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1K tokens",
+       "pricePerUnit": {
+        "USD": "0.0007200000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "AMAZONUSE10008": {
+    "AMAZONUSE10008.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "AMAZONUSE10008",
+     "effectiveDate": "2025-02-01T00:00:00Z",
+     "priceDimensions": {
+      "AMAZONUSE10008.JRTCKXETXF.0000000000": {
+       "rateCode": "AMAZONUSE10008.JRTCKXETXF.0000000000",
+       "description": "Claude3.7Sonnet-ProvisionedThroughput-ModelUnits Hrs",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "Hrs",
+       "pricePerUnit": {
+        "USD": "79.0000000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "AMAZONUSE10009": {
+    "AMAZONUSE10009.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "AMAZONUSE10009",
+     "effectiveDate": "2025-02-01T00:00:00Z",
+     "priceDimensions": {
+      "AMAZONUSE10009.JRTCKXETXF.0000000000": {
+       "rateCode": "AMAZONUSE10009.JRTCKXETXF.0000000000",
+       "description": "Claude3.7Sonnet-input-tokens 1K tokens",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1K tokens",
+       "pricePerUnit": {
+        "USD": "0.0030000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "AMAZONUSE10010": {
+    "AMAZONUSE10010.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "AMAZONUSE10010",
+     "effectiveDate": "2025-02-01T00:00:00Z",
+     "priceDimensions": {
+      "AMAZONUSE10010.JRTCKXETXF.0000000000": {
+       "rateCode": "AMAZONUSE10010.JRTCKXETXF.0000000000",
+       "description": "Claude3.7Sonnet-output-tokens 1K tokens",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1K tokens",
+       "pricePerUnit": {
+        "USD": "0.0150000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "AMAZONUSE10011": {
+    "AMAZONUSE10011.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "AMAZONUSE10011",
+     "effectiveDate": "2025-02-01T00:00:00Z",
+     "priceDimensions": {
+      "AMAZONUSE10011.JRTCKXETXF.0000000000": {
+       "rateCode": "AMAZONUSE10011.JRTCKXETXF.0000000000",
+       "description": "Claude3.7Sonnet-cache-read-input-tokens 1K tokens",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1K tokens",
+       "pricePerUnit": {
+        "USD": "0.0003000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "AMAZONUSE10012": {
+    "AMAZONUSE10012.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "AMAZONUSE10012",
+     "effectiveDate": "2025-02-01T00:00:00Z",
+     "priceDimensions": {
+      "AMAZONUSE10012.JRTCKXETXF.0000000000": {
+       "rateCode": "AMAZONUSE10012.JRTCKXETXF.0000000000",
+       "description": "Claude3.7Sonnet-input-tokens-long-context 1K tokens",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1K tokens",
+       "pricePerUnit": {
+        "USD": "0.0060000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "AMAZONUSE10013": {
+    "AMAZONUSE10013.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "AMAZONUSE10013",
+     "effectiveDate": "2025-02-01T00:00:00Z",
+     "priceDimensions": {
+      "AMAZONUSE10013.JRTCKXETXF.0000000000": {
+       "rateCode": "AMAZONUSE10013.JRTCKXETXF.0000000000",
+       "description": "Llama3.3-70B-input-tokens 1K tokens",
+       "beginRange": "0",
+       "endRange": "1000",
+       "unit": "1K tokens",
+       "pricePerUnit": {
+        "USD": "0.0000000000"
+       },
+       "appliesTo": []
+      },
+      "AMAZONUSE10013.JRTCKXETXF.0000000001": {
+       "rateCode": "AMAZONUSE10013.JRTCKXETXF.0000000001",
+       "description": "Llama3.3-70B-input-tokens 1K tokens",
+       "beginRange": "1000",
+       "endRange": "Inf",
+       "unit": "1K tokens",
+       "pricePerUnit": {
+        "USD": "0.0007200000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "AMAZONUSE10014": {
+    "AMAZONUSE10014.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "AMAZONUSE10014",
+     "effectiveDate": "2025-02-01T00:00:00Z",
+     "priceDimensions": {
+      "AMAZONUSE10014.JRTCKXETXF.0000000000": {
+       "rateCode": "AMAZONUSE10014.JRTCKXETXF.0000000000",
+       "description": "MP:USE1_InputTokenCount-Units Units",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "Units",
+       "pricePerUnit": {
+        "USD": "0.0030000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "AMAZONUSE10015": {
+    "AMAZONUSE10015.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "AMAZONUSE10015",
+     "effectiveDate": "2025-02-01T00:00:00Z",
+     "priceDimensions": {
+      "AMAZONUSE10015.JRTCKXETXF.0000000000": {
+       "rateCode": "AMAZONUSE10015.JRTCKXETXF.0000000000",
+       "description": "CustomModelStorage-ModelMonth Month",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "Month",
+       "pricePerUnit": {
+        "USD": "1.9500000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "AMAZONUSE10016": {
+    "AMAZONUSE10016.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "AMAZONUSE10016",
+     "effectiveDate": "2025-02-01T00:00:00Z",
+     "priceDimensions": {
+      "AMAZONUSE10016.JRTCKXETXF.0000000000": {
+       "rateCode": "AMAZONUSE10016.JRTCKXETXF.0000000000",
+       "description": "NovaPremier-input-tokens 1K tokens",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1K tokens",
+       "pricePerUnit": {
+        "CNY": "1.0"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   }
+  },
+  "Reserved": {
+   "AMAZONUSE10007": {
+    "AMAZONUSE10007.RSV": {
+     "effectiveDate": "2025-01-01T00:00:00Z",
+     "priceDimensions": {
+      "x": {
+       "unit": "Hrs",
+       "beginRange": "0",
+       "pricePerUnit": {
+        "USD": "1.0"
+       }
+      }
+     }
+    }
+   }
+  }
+ }
+}

@@ -1,0 +1,85 @@
+{
+ "formatVersion": "v1.0",
+ "disclaimer": "This pricing list is for informational purposes only.",
+ "offerCode": "AmazonBedrockFoundationModels",
+ "version": "20250601000000",
+ "publicationDate": "2025-06-01T00:00:00Z",
+ "products": {
+  "AMAZONUSE10000": {
+   "sku": "AMAZONUSE10000",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrockFoundationModels",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-Claude3.5Haiku-input-tokens",
+    "operation": "Usage",
+    "regionCode": "us-east-1",
+    "servicename": "Amazon Bedrock",
+    "model": "Claude 3.5 Haiku",
+    "provider": "Anthropic"
+   }
+  },
+  "AMAZONUSE10001": {
+   "sku": "AMAZONUSE10001",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrockFoundationModels",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-Claude3.5Haiku-output-tokens",
+    "operation": "Usage",
+    "regionCode": "us-east-1",
+    "servicename": "Amazon Bedrock",
+    "model": "Claude 3.5 Haiku",
+    "provider": "Anthropic"
+   }
+  }
+ },
+ "terms": {
+  "OnDemand": {
+   "AMAZONUSE10000": {
+    "AMAZONUSE10000.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "AMAZONUSE10000",
+     "effectiveDate": "2025-02-01T00:00:00Z",
+     "priceDimensions": {
+      "AMAZONUSE10000.JRTCKXETXF.0000000000": {
+       "rateCode": "AMAZONUSE10000.JRTCKXETXF.0000000000",
+       "description": "Claude3.5Haiku-input-tokens 1M tokens",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1M tokens",
+       "pricePerUnit": {
+        "USD": "0.8000000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "AMAZONUSE10001": {
+    "AMAZONUSE10001.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "AMAZONUSE10001",
+     "effectiveDate": "2025-02-01T00:00:00Z",
+     "priceDimensions": {
+      "AMAZONUSE10001.JRTCKXETXF.0000000000": {
+       "rateCode": "AMAZONUSE10001.JRTCKXETXF.0000000000",
+       "description": "Claude3.5Haiku-output-tokens 1M tokens",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1M tokens",
+       "pricePerUnit": {
+        "USD": "4.0000000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   }
+  }
+ }
+}

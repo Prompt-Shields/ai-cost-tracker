@@ -1,0 +1,11 @@
+{
+ "formatVersion": "v1.0",
+ "disclaimer": "This pricing list is for informational purposes only.",
+ "publicationDate": "2025-06-01T00:00:00Z",
+ "regions": {
+  "us-east-1": {
+   "regionCode": "us-east-1",
+   "currentVersionUrl": "/offers/v1.0/aws/AmazonBedrockFoundationModels/20250601000000/us-east-1/index.json"
+  }
+ }
+}
