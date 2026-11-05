@@ -1,0 +1,7 @@
+{
+  "Accounts": [
+    {"Id": "111111111111", "Arn": "arn:aws:organizations::111111111111:account/o-exampleorgid/111111111111", "Email": "billing@example.com", "Name": "Management", "Status": "ACTIVE", "State": "ACTIVE", "JoinedMethod": "INVITED", "JoinedTimestamp": "2024-01-10T09:00:00Z"},
+    {"Id": "123456789012", "Arn": "arn:aws:organizations::111111111111:account/o-exampleorgid/123456789012", "Email": "ml@example.com", "Name": "ML Platform", "Status": "ACTIVE", "State": "ACTIVE", "JoinedMethod": "CREATED", "JoinedTimestamp": "2024-02-01T09:00:00Z"}
+  ],
+  "NextToken": "page-2"
+}

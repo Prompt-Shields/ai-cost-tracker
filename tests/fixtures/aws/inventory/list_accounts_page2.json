@@ -1,0 +1,6 @@
+{
+  "Accounts": [
+    {"Id": "222222222222", "Arn": "arn:aws:organizations::111111111111:account/o-exampleorgid/222222222222", "Email": "web@example.com", "Name": "Web Shop", "Status": "ACTIVE", "JoinedMethod": "CREATED", "JoinedTimestamp": "2024-03-01T09:00:00Z"},
+    {"Id": "333333333333", "Arn": "arn:aws:organizations::111111111111:account/o-exampleorgid/333333333333", "Email": "old@example.com", "Name": "Closed sandbox", "Status": "SUSPENDED", "State": "CLOSED", "JoinedMethod": "CREATED", "JoinedTimestamp": "2023-03-01T09:00:00Z"}
+  ]
+}
